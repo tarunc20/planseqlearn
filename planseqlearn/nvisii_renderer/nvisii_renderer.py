@@ -106,6 +106,9 @@ class NVISIIRenderer(Renderer):
         elif hasattr(self.env, 'env'):
             if issubclass(type(env.env), BaseEnv):
                 self.env_type = 'mopa'
+        elif hasattr(self.env, 'env_name'):
+            if self.env.env_name == 'menagerie':
+                self.env_type = 'menagerie'
         else:
             self.env_type = 'kitchen'
 
@@ -255,6 +258,13 @@ class NVISIIRenderer(Renderer):
                 at = (0,0,-.25),
                 up = (0,0,1),
                 eye = (0,1.5,1),
+            )
+        elif self.env_type == 'menagerie':
+            self._camera_configuration(
+                at_vec=nvisii.vec3(0, 0, 0),
+                up_vec=nvisii.vec3(0, 0, 1),
+                eye_vec=nvisii.vec3(1, 1, 1),
+                quat=nvisii.quat(-1, 0, 0, 0),
             )
         else:
             # mopa
@@ -447,7 +457,18 @@ class NVISIIRenderer(Renderer):
                 'r_gripper_l_finger_tip',
                 'r_gripper_r_finger_tip'
             ]
-
+        elif self.env_type == 'menagerie':
+            self.body_tags = [
+                "base",
+                "right_l0",
+                "head",
+                "right_l1",
+                "right_l2",
+                "right_l3",
+                "right_l4",
+                "right_l5",
+                "right_l6"
+            ]
         if parent_body_name != "worldbody":
             if self.tag_in_name(name):
                 pos = self.env.sim.data.get_body_xpos(parent_body_name)
