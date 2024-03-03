@@ -165,6 +165,11 @@ KITCHEN_PLANS = {
         ('bottom left burner', 'grasp'), 
         ('close microwave', 'grasp')
     ],
+    "kitchen-kettle-light-burner-v0": [
+        ("kettle", "grasp"),
+        ("light switch", "grasp"),
+        ("top burner", "grasp"),
+    ],
     "kitchen-kettle-burner-v0": [
         ("kettle", "grasp"),
         ("top burner", "grasp"),
