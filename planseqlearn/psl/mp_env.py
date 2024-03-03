@@ -1,5 +1,6 @@
 import numpy as np
 from robosuite.utils.transform_utils import *
+from tqdm import tqdm
 from planseqlearn.psl.vision_utils import reset_precompute_sam_poses
 from planseqlearn.psl.sam_utils import build_models
 from rlkit.envs.wrappers import ProxyEnv as RlkitProxyEnv
@@ -194,6 +195,115 @@ class PSLEnv(ProxyEnv):
             d |= (self.curr_ll_step >= (self.curr_plan_stage + 1) * 25)
         return o, r, d, i
 
+    def backtracking_search_from_goal_pos(
+        self,
+        start_pos,
+        start_quat,
+        target_pos,
+        target_quat,
+        qpos,
+        qvel,
+        is_grasped=False,
+        movement_fraction=0.001,
+        obj_name="",
+    ):
+        curr_pos = target_pos.copy()
+        collision = not self.check_state_validity_ee(
+            curr_pos,
+            target_quat,
+            qpos,
+            qvel,
+            is_grasped=is_grasped,
+            obj_name=obj_name,
+        )
+        iters = 0
+        max_iters = int(1 / movement_fraction)
+        while collision and iters < max_iters:
+            curr_pos = curr_pos - movement_fraction * (target_pos - start_pos)
+            valid = self.check_state_validity_ee(
+                curr_pos,
+                target_quat,
+                qpos,
+                qvel,
+                is_grasped=is_grasped,
+                obj_name=obj_name,
+            )
+            collision = not valid
+            iters += 1
+        if collision:
+            return np.concatenate((start_pos, start_quat))
+        else:
+            return np.concatenate((curr_pos, target_quat))
+    
+    def check_state_validity_joint(
+        self,
+        joint_pos,
+        qpos,
+        qvel,
+        is_grasped,
+        obj_name="",
+    ):
+        self.set_robot_based_on_joint_angles(joint_pos, qpos, qvel, obj_name=obj_name)
+        valid = not self.check_robot_collision(
+            ignore_object_collision=is_grasped,
+            obj_name=obj_name,
+        )
+        return valid
+
+    def check_state_validity_ee(
+        self, 
+        pos, 
+        quat,
+        qpos,
+        qvel,
+        is_grasped,
+        obj_name="",
+    ):
+        self.set_robot_based_on_ee_pos(pos, quat, qpos, qvel, obj_name=obj_name)
+        valid = not self.check_robot_collision(
+            ignore_object_collision=is_grasped,
+            obj_name=obj_name,
+        )
+        return valid
+    
+    def backtracking_search_from_goal_joints(
+        self,
+        start_angles,
+        goal_angles,
+        qpos,
+        qvel,
+        obj_name="",
+        is_grasped=False,
+        movement_fraction=0.001,
+    ):
+        curr_angles = goal_angles.copy()
+        valid = self.check_state_validity_joint(
+            curr_angles,
+            qpos,
+            qvel,
+            is_grasped=is_grasped,
+            obj_name=obj_name,
+        )
+        collision = not valid
+        iters = 0
+        max_iters = int(1 / movement_fraction)
+        while collision and iters < max_iters:
+            curr_angles = curr_angles - movement_fraction * (goal_angles - start_angles)
+            valid = self.check_state_validity_joint(
+                curr_angles,
+                qpos,
+                qvel,
+                is_grasped=is_grasped,
+                obj_name=obj_name,
+            )
+            collision = not valid
+            iters += 1
+        if collision:
+            return start_angles
+        else:
+            return curr_angles
+
+
     def construct_mp_problem(
         self,
         target_pos,
@@ -232,29 +342,15 @@ class PSLEnv(ProxyEnv):
             goal_valid = check_valid(goal())
             # do manual check
             if not goal_valid:
-                if self.env_name.startswith("Sawyer"):
-                    target_pos, target_quat = self.backtracking_search_from_goal_pos(
-                        start_pos=start_pos,
-                        start_quat=start_quat,
-                        target_quat=target_quat,
-                        goal_pos=target_pos,
-                        qpos=qpos,
-                        qvel=qvel,
-                        obj_name=obj_name,
-                    )
-                    target_angles = self.compute_ik(
-                        target_pos, target_quat, qpos, qvel, og_qpos, og_qvel
-                    ).astype(np.float64)
-                else:
-                    target_angles = self.backtracking_search_from_goal_joints(
-                        start_angles=og_qpos[:7],
-                        goal_angles=target_angles,
-                        qpos=qpos,
-                        qvel=qvel,
-                        movement_fraction=backtrack_movement_fraction,
-                        is_grasped=is_grasped,
-                        obj_name=obj_name,
-                    )
+                target_angles = self.backtracking_search_from_goal_joints(
+                    start_angles=og_qpos[:7],
+                    goal_angles=target_angles,
+                    qpos=qpos,
+                    qvel=qvel,
+                    movement_fraction=backtrack_movement_fraction,
+                    is_grasped=is_grasped,
+                    obj_name=obj_name,
+                )
                 for i in range(7):
                     goal()[i] = target_angles[i]
                 assert check_valid(goal())
@@ -299,7 +395,7 @@ class PSLEnv(ProxyEnv):
             goal().rotation().w = target_quat[3]
             goal_valid = check_valid(goal())
             if not goal_valid:
-                pos = self.backtracking_search_from_goal(
+                pos = self.backtracking_search_from_goal_pos(
                     start_pos,
                     start_quat,
                     target_pos,
@@ -307,8 +403,7 @@ class PSLEnv(ProxyEnv):
                     qpos,
                     qvel,
                     is_grasped=is_grasped,
-                    open_gripper_on_tp=open_gripper_on_tp,
-                    obj_idx=obj_idx,
+                    obj_name=obj_name,
                 )
                 goal = ob.State(space)
                 goal().setXYZ(*pos[:3])
@@ -325,7 +420,7 @@ class PSLEnv(ProxyEnv):
                 )
         return start, goal, si
 
-    def get_mp_waypoints(self, path, qpos, qvel, is_grasped, obj_name):
+    def get_mp_waypoints(self, path, qpos, qvel, obj_name):
         waypoint_imgs, waypoint_masks = [], []
         for i, state in enumerate(path):
             if self.use_joint_space_mp:
@@ -362,8 +457,7 @@ class PSLEnv(ProxyEnv):
         qvel,
         is_grasped=False,
         obj_name="",
-        open_gripper_on_tp=False,
-        planning_time=50.0,
+        planning_time=20.0,
         get_intermediate_frames=False,
     ):
         if "place" in self.text_plan[self.curr_plan_stage][1]:
@@ -415,15 +509,12 @@ class PSLEnv(ProxyEnv):
                     # start state is always valid.
                     return True
                 else:
-                    self.set_robot_based_on_ee_pos(
+                    valid = self.check_state_validity_ee(
                         pos,
                         quat,
                         qpos,
                         qvel,
-                        obj_name=obj_name,
-                    )
-                    valid = not self.check_robot_collision(
-                        ignore_object_collision=is_grasped,
+                        is_grasped=is_grasped,
                         obj_name=obj_name,
                     )
                 return valid
@@ -459,13 +550,15 @@ class PSLEnv(ProxyEnv):
             solved = planner.solve(planning_time)
             print(f"Solved: {solved}")
             curr_sol = solved
+            print(curr_sol)
             ct += 1
             if not self.retry:
                 break
             if ct >= 5:
                 assert False
-        intermediate_frames = []
-        clean_frames = []
+        self.intermediate_frames = []
+        self.clean_frames = []
+        self.intermediate_qposes, self.intermediate_qvels = [], []
         if solved:
             path = pdef.getSolutionPath()
             success = og.PathSimplifier(si).simplify(path, 0.001)
@@ -486,11 +579,9 @@ class PSLEnv(ProxyEnv):
                         ]
                     )
                 converted_path.append(new_state)
-            #converted_path = converted_path[1:]
-            if get_intermediate_frames:
-                waypoint_imgs, waypoint_masks = self.get_mp_waypoints(
-                    converted_path, qpos, qvel, is_grasped, obj_name=obj_name
-                )
+            self.waypoint_imgs, self.waypoint_masks = self.get_mp_waypoints(
+                converted_path, qpos, qvel, obj_name=obj_name
+            )
             self._wrapped_env.reset()
             self.sim.data.qpos[:] = og_qpos.copy()
             self.sim.data.qvel[:] = og_qvel.copy()
@@ -498,60 +589,50 @@ class PSLEnv(ProxyEnv):
             self.update_mp_controllers()
             self.break_mp = False
             self.set_robot_colors(np.array([0.1, 0.3, 0.7, 1.0]))
-            self.intermediate_qposes, self.intermediate_qvels = [], []
-            for state_idx, state in enumerate(converted_path):
-                state_frames = []
-                try:
-                    state_frames = self.process_state_frames(state_frames)
-                except:
-                    pass
+            self.get_intermediate_frames = get_intermediate_frames
+            converted_path = converted_path[1:] # remove the start state
+            for state_idx, state in tqdm(enumerate(converted_path)):
                 start_qpos = self.sim.data.qpos[:].copy()
                 if state_idx == 0:
                     self.intermediate_qposes = [start_qpos.copy()]
                     self.intermediate_qvels = [self.sim.data.qvel[:].copy()]
                 print(f"First state: {state}")
-                for step in range(20):
+                for step in tqdm(range(50)):
                     self.take_mp_step(
                         state,
                         is_grasped,
+                        state_idx,
+                        start_qpos,
+                        step,
+                        50
                     )
-                    self.intermediate_qposes.append(self.sim.data.qpos[:].copy())
-                    self.intermediate_qvels.append(self.sim.data.qvel[:].copy())
-                    if get_intermediate_frames:
-                        if hasattr(self, "get_vid_image"):
-                            im = self.get_vid_image()
-                        else:
-                            im = self.get_image()
-                        self.reset_robot_colors()
-                        if hasattr(self, "get_vid_image"):
-                            im2 = self.get_vid_image()
-                        else:
-                            im2 = self.get_image()
-                        self.set_robot_colors(np.array([0.1, 0.3, 0.7, 1.0]))
-                        if self.env_name.endswith("v2"):
-                            clean_frames.append(im2[:, :, ::-1])
-                        else:
-                            clean_frames.append(im2)
-                        try:
-                            state_frames.append(im)
-                            state_frames = self.process_state_frames(state_frames)
-                        except:
-                            robot_mask = waypoint_masks[state_idx]
-                            im = (
-                                0.5 * (im * robot_mask)
-                                + 0.5 * waypoint_imgs[state_idx]
-                                + im * (1 - robot_mask)
-                            )
-                            intermediate_frames.append(im)
-                try:
-                    state_frames = self.process_state_frames(state_frames)
-                    intermediate_frames.extend(state_frames)
-                except:
-                    pass
 
             self.reset_robot_colors()
             self.rebuild_controller()
-            self.intermediate_frames = intermediate_frames
-            self.clean_frames = clean_frames
             print(f"Error: {np.linalg.norm(self._eef_xpos - target_pos)}")
             return np.linalg.norm(self._eef_xpos - target_pos)
+
+    def update_intermediate_frames(self, state_idx):
+        if self.get_intermediate_frames:
+            if hasattr(self, "get_vid_image"):
+                im = self.get_vid_image()
+            else:
+                im = self.get_image()
+            self.reset_robot_colors()
+            if hasattr(self, "get_vid_image"):
+                im2 = self.get_vid_image()
+            else:
+                im2 = self.get_image()
+            self.set_robot_colors(np.array([0.1, 0.3, 0.7, 1.0]))
+            if self.env_name.endswith("v2"):
+                self.clean_frames.append(im2[:, :, ::-1])
+            else:
+                self.clean_frames.append(im2)
+            robot_mask = self.waypoint_masks[state_idx]
+            im = (
+                0.5 * (im * robot_mask)
+                + 0.5 * self.waypoint_imgs[state_idx]
+                + im * (1 - robot_mask)
+            )
+            self.intermediate_frames.append(im)
+        
