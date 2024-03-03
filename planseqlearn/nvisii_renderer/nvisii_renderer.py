@@ -106,6 +106,7 @@ class NVISIIRenderer(Renderer):
         elif hasattr(self.env, 'env'):
             if issubclass(type(env.env), BaseEnv):
                 self.env_type = 'mopa'
+                self.env_name = self.env.env_name
         elif hasattr(self.env, 'env_name'):
             if self.env.env_name == 'menagerie':
                 self.env_type = 'menagerie'
@@ -268,11 +269,18 @@ class NVISIIRenderer(Renderer):
             )
         else:
             # mopa
-            self.camera.get_transform().look_at(
-                at = (0,0,1),
-                up = (0,0,1),
-                eye = (1.75,0,2.5),
-            )
+            if self.env.env_name == 'SawyerLiftObstacle-v0':
+                self.camera.get_transform().look_at(
+                    at = (0,0,1),
+                    up = (0,0,1),
+                    eye = (1.75,0,2.75),
+                )
+            else:
+                self.camera.get_transform().look_at(
+                    at = (0,0,1),
+                    up = (0,0,1),
+                    eye = (2.25,0,2),
+                )
 
         # Environment configuration
         self._dome_light_intensity = 1
@@ -487,7 +495,6 @@ class NVISIIRenderer(Renderer):
                 homo_mat = T.pose2mat((np.zeros((1, 3), dtype=np.float32), quat_xyzw_body))
                 pos_offset = homo_mat @ np.array([geom_pos[0], geom_pos[1], geom_pos[2], 1.0]).transpose()
                 pos = pos + pos_offset[:3]
-
         else:
             pos = [0, 0, 0]
             nvisii_quat = nvisii.quat(1, 0, 0, 0)  # wxyz

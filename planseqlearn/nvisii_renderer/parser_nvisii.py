@@ -111,7 +111,7 @@ class Parser(BaseParser):
                     # removing weird cylinders in metaworld envs
                     continue
         
-            if 'indicator' in geom_name or geom_name.endswith('target') or geom_name.endswith('target0') or geom_name.endswith('target1') or 'collison' in geom_name:
+            if 'indicator' in geom_name or (geom_name.endswith('target') and geom_name != 'target') or geom_name.endswith('target0') or geom_name.endswith('target1') or 'collison' in geom_name:
                 continue
             
             geom_quat = string_to_array(geom.get("quat", "1 0 0 0"))
