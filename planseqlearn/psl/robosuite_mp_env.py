@@ -548,9 +548,9 @@ class RobosuitePSLEnv(PSLEnv):
                     object_pos[2] += 0.125
                     object_quat = np.zeros(4)
             elif self.env_name == "Door":
-                object_pos = np.array(
-                    [self.sim.data.qpos[self.hinge_qpos_addr]]
-                )  # this is not what they are, but they will be decoded properly
+                object_pos = self.sim.data.body_xpos[
+                    self.sim.model.body_name2id("Door_main")
+                ] + np.array([0.05, 0.18, 0.05])
                 object_quat = np.array(
                     [self.sim.data.qpos[self.handle_qpos_addr]]
                 )  # this is not what they are, but they will be decoded properly
@@ -1041,6 +1041,8 @@ class RobosuitePSLEnv(PSLEnv):
         
     def named_check_object_grasp(self, obj_name):
         def check_object_grasp(*args, **kwargs):
+            if self.env_name.endswith("Door"):
+                return False
             if self.env_name.endswith("Lift"):
                 is_grasped = self._check_grasp(
                     gripper=self.robots[0].gripper,
