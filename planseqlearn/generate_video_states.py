@@ -1,5 +1,7 @@
 import mujoco_py
-import argparse 
+import argparse
+
+import omegaconf 
 from planseqlearn.environments.robosuite_dm_env import make_robosuite
 from planseqlearn.environments.metaworld_dm_env import make_metaworld
 from planseqlearn.environments.mopa_dm_env import make_mopa
@@ -11,73 +13,82 @@ import pickle
 
 from planseqlearn.utils import make_video 
 
-def robosuite_gen_video(env_name, camera_name, suite, use_mp):
-    # create environment 
-    agent = torch.load(f"planseqlearn/psl_policies/{suite}/{env_name}.pt")["agent"]
-    if env_name == "PickPlaceCanBread" or env_name == "PickPlaceCerealMilk":
-        env_name = "PickPlace"
-    if suite == "robosuite":
-        env = make_robosuite(
-            name=env_name,
-            frame_stack=3,
-            action_repeat=2,
-            discount=1.0,
-            camera_name=camera_name,
-            psl=True,
-            use_mp=use_mp,
-            use_sam_segmentation=False,
-            use_vision_pose_estimation=False,
-            text_plan=ROBOSUITE_PLANS[env_name],
-            vertical_displacement=0.08,
-            estimate_orientation=False,
-        )
-        inner_env = env._env._env._env._env._env
-        mp_env = inner_env._env
-    elif suite == "metaworld":
+def make_env(cfg, is_eval):
+    if cfg.task_name.split("_", 1)[0] == "metaworld":
         env = make_metaworld(
-                name=env_name,
-                frame_stack=3,
-                action_repeat=2,
-                discount=1.0,
-                camera_name=camera_name,
-                psl=True,
-                text_plan=METAWORLD_PLANS[env_name],
-                use_mp=use_mp,
-                use_sam_segmentation=False,
-                use_vision_pose_estimation=False,
-                seed=0
-            )
-        inner_env = env._env._env._env._env._env
-        mp_env = inner_env._env
-    elif suite == "mopa":
-        env = make_mopa(
-            name=env_name,
-            frame_stack=3,
-            action_repeat=2,
-            psl=True,
-            text_plan=MOPA_PLANS[env_name],
-            use_mp=use_mp,
-            use_sam_segmentation=False,
-            use_vision_pose_estimation=False,
-            seed=0
+            name=cfg.task_name.split("_", 1)[1],
+            frame_stack=cfg.frame_stack,
+            action_repeat=cfg.action_repeat,
+            discount=cfg.discount,
+            seed=cfg.seed,
+            camera_name=cfg.camera_name,
+            psl=cfg.psl,
+            text_plan=cfg.text_plan,
+            use_vision_pose_estimation=cfg.use_vision_pose_estimation,
         )
         inner_env = env._env._env._env._env._env
         mp_env = inner_env._env
-    elif suite == "kitchen":
+    elif cfg.task_name.split("_", 1)[0] == "robosuite":
+        env = make_robosuite(
+            name=cfg.task_name.split("_", 1)[1],
+            frame_stack=cfg.frame_stack,
+            action_repeat=cfg.action_repeat,
+            discount=cfg.discount,
+            camera_name=cfg.camera_name,
+            psl=cfg.psl,
+            path_length=cfg.path_length,
+            vertical_displacement=cfg.vertical_displacement,
+            estimate_orientation=cfg.estimate_orientation,
+            valid_obj_names=cfg.valid_obj_names,
+            use_proprio=cfg.use_proprio,
+            text_plan=cfg.text_plan,
+            use_vision_pose_estimation=cfg.use_vision_pose_estimation,
+        )
+        inner_env = env._env._env._env._env._env
+        mp_env = inner_env._env
+    elif cfg.task_name.split("_", 1)[0] == "kitchen":
         env = make_kitchen(
-            name=env_name,
-            frame_stack=3,
-            action_repeat=2,
-            discount=1.0,
-            camera_name=camera_name,
-            psl=True,
-            text_plan=KITCHEN_PLANS[env_name],
-            use_mp=use_mp,
-            use_sam_segmentation=False,
-            seed=0
+            name=cfg.task_name.split("_", 1)[1],
+            frame_stack=cfg.frame_stack,
+            action_repeat=cfg.action_repeat,
+            discount=cfg.discount,
+            seed=cfg.seed,
+            camera_name=cfg.camera_name,
+            path_length=cfg.path_length,
+            psl=cfg.psl,
+            text_plan=cfg.text_plan,
         )
         inner_env = env._env._env._env._env._env._env
         mp_env = inner_env._env
+    elif cfg.task_name.split("_", 1)[0] == "mopa":
+        env = make_mopa(
+            name=cfg.task_name.split("_", 1)[1],
+            frame_stack=cfg.frame_stack,
+            action_repeat=cfg.action_repeat,
+            seed=cfg.seed,
+            horizon=cfg.path_length,
+            psl=cfg.psl,
+            text_plan=cfg.text_plan,
+            use_vision_pose_estimation=cfg.use_vision_pose_estimation,
+        )
+        inner_env = env._env._env._env._env._env
+        mp_env = inner_env._env
+    return env, inner_env, mp_env
+
+def robosuite_gen_video(env_name, camera_name, suite, use_mp):
+    # reset current hydra config if already parsed (but not passed in here)
+    import hydra
+    from hydra import compose, initialize
+    from hydra.core.hydra_config import HydraConfig
+    if HydraConfig.initialized():
+        task = HydraConfig.get().runtime.choices['task']
+        hydra.core.global_hydra.GlobalHydra.instance().clear()
+
+    with initialize(config_path="./cfgs"):
+        cfg = compose(config_name="train_config", overrides=[f"task={suite}_{env_name}", f"camera_name={camera_name}", "psl=True"])
+    # create environment 
+    agent = torch.load(f"planseqlearn/psl_policies/{suite}/{env_name}.pt")["agent"]
+    env, inner_env, mp_env = make_env(cfg, is_eval=True)
     frames = []
     clean_frames = []
     np.random.seed(0)
@@ -89,12 +100,14 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
         )
         mp_env.intermediate_qposes = []
         mp_env.intermediate_qvels = []
-        frames.extend(mp_env.intermediate_frames)
+        frames.extend(mp_env.clean_frames)
     else:
         states = dict(
             qpos=[inner_env.sim.data.qpos.copy()],
             qvel=[inner_env.sim.data.qvel.copy()],
         )
+    num_success_steps = 5
+    success_steps_ctr = 0
     with torch.no_grad():
         for _ in range(100):
             act = agent.act(o.observation, step=_, eval_mode=True)
@@ -105,20 +118,30 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
                     states['qvel'].extend(mp_env.intermediate_qvels)
                     mp_env.intermediate_qposes = []
                     mp_env.intermediate_qvels = []
-                    frames.extend(mp_env.intermediate_frames)
-                    mp_env.intermediate_frames = []
+                    frames.extend(mp_env.clean_frames)
+                    mp_env.clean_frames = []
             if suite == 'mopa':
                 frames.append(env.get_vid_image())
             else:
                 frames.append(env.get_image())
             states["qpos"].append(inner_env.sim.data.qpos.copy())
             states["qvel"].append(inner_env.sim.data.qvel.copy())
-            if o.last() or o.reward['success']:
+            if o.reward['success']:
+                success_steps_ctr += 1
+            if success_steps_ctr == num_success_steps:
+                break
+            if o.last():
                 break
     print(o.reward)
-    states["qpos"] = np.array(states["qpos"])
-    states["qvel"] = np.array(states["qvel"])
-    np.savez(f"states/{env_name}_{camera_name}_states.npz", **states)
+    if not o.reward['success']:
+        # write to a txt file the env name 
+        with open('failed_envs.txt', 'a') as f:
+            f.write(f"{env_name}\n")
+    # assert o.reward['success'], f"Failed to complete task {env_name}"
+    if use_mp and o.reward['success']:
+        states["qpos"] = np.array(states["qpos"])
+        states["qvel"] = np.array(states["qvel"])
+        np.savez(f"states/{env_name}_{camera_name}_states.npz", **states)
     video_filename = f"{env_name}_{camera_name}.mp4"
     make_video(frames, "videos", video_filename)
 

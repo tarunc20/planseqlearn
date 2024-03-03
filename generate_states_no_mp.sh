@@ -10,7 +10,7 @@ python planseqlearn/generate_video_states.py --env_name kitchen-light-v0 --camer
 # python planseqlearn/generate_video_states.py --env_name kitchen-ms3-v0 --camera_name wrist --suite kitchen
 python planseqlearn/generate_video_states.py --env_name kitchen-ms5-v0 --camera_name wrist --suite kitchen
 # python planseqlearn/generate_video_states.py --env_name kitchen-ms7-v0 --camera_name wrist --suite kitchen
-python planseqlearn/generate_video_states.py --env_name kitchen-ms10-v0 --camera_name wrist --suite kitchen
+python planseqlearn/generate_video_states.py --env_name kitchen-ms10-v1 --camera_name wrist --suite kitchen
 
 python planseqlearn/generate_video_states.py --env_name bin-picking-v2 --camera_name gripperPOVpos --suite metaworld
 python planseqlearn/generate_video_states.py --env_name assembly-v2 --camera_name gripperPOVneg --suite metaworld
