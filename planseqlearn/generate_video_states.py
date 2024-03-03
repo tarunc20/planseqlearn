@@ -13,7 +13,7 @@ import pickle
 
 from planseqlearn.utils import make_video 
 
-def make_env(cfg, is_eval):
+def make_env(cfg, is_eval, use_mp=False):
     if cfg.task_name.split("_", 1)[0] == "metaworld":
         env = make_metaworld(
             name=cfg.task_name.split("_", 1)[1],
@@ -25,6 +25,7 @@ def make_env(cfg, is_eval):
             psl=cfg.psl,
             text_plan=cfg.text_plan,
             use_vision_pose_estimation=cfg.use_vision_pose_estimation,
+            use_mp=use_mp,
         )
         inner_env = env._env._env._env._env._env
         mp_env = inner_env._env
@@ -43,6 +44,7 @@ def make_env(cfg, is_eval):
             use_proprio=cfg.use_proprio,
             text_plan=cfg.text_plan,
             use_vision_pose_estimation=cfg.use_vision_pose_estimation,
+            use_mp=use_mp,
         )
         inner_env = env._env._env._env._env._env
         mp_env = inner_env._env
@@ -57,6 +59,7 @@ def make_env(cfg, is_eval):
             path_length=cfg.path_length,
             psl=cfg.psl,
             text_plan=cfg.text_plan,
+            use_mp=use_mp,
         )
         inner_env = env._env._env._env._env._env._env
         mp_env = inner_env._env
@@ -70,6 +73,7 @@ def make_env(cfg, is_eval):
             psl=cfg.psl,
             text_plan=cfg.text_plan,
             use_vision_pose_estimation=cfg.use_vision_pose_estimation,
+            use_mp=use_mp,
         )
         inner_env = env._env._env._env._env._env
         mp_env = inner_env._env
@@ -88,9 +92,8 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
         cfg = compose(config_name="train_config", overrides=[f"task={suite}_{env_name}", f"camera_name={camera_name}", "psl=True"])
     # create environment 
     agent = torch.load(f"planseqlearn/psl_policies/{suite}/{env_name}.pt")["agent"]
-    env, inner_env, mp_env = make_env(cfg, is_eval=True)
+    env, inner_env, mp_env = make_env(cfg, is_eval=True, use_mp=use_mp)
     frames = []
-    clean_frames = []
     np.random.seed(0)
     o = env.reset()
     if use_mp:
@@ -100,7 +103,7 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
         )
         mp_env.intermediate_qposes = []
         mp_env.intermediate_qvels = []
-        frames.extend(mp_env.clean_frames)
+        frames.extend(mp_env.intermediate_frames)
     else:
         states = dict(
             qpos=[inner_env.sim.data.qpos.copy()],
@@ -118,8 +121,8 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
                     states['qvel'].extend(mp_env.intermediate_qvels)
                     mp_env.intermediate_qposes = []
                     mp_env.intermediate_qvels = []
-                    frames.extend(mp_env.clean_frames)
-                    mp_env.clean_frames = []
+                    frames.extend(mp_env.intermediate_frames)
+                    mp_env.intermediate_frames = []
             if suite == 'mopa':
                 frames.append(env.get_vid_image())
             else:
