@@ -522,7 +522,7 @@ class MoPAPSLEnv(PSLEnv):
 
     def check_robot_collision(self, **kwargs):
         return check_collisions(
-            self, self.allowed_collision_pairs, self.env_name, **args, **kwargs
+            self, self.allowed_collision_pairs, self.env_name, **kwargs
         )
     
     def get_sam_kwargs(self, obj_name):
@@ -625,43 +625,6 @@ class MoPAPSLEnv(PSLEnv):
     def get_joint_bounds(self):
         return self.sim.model.jnt_range[self.ref_joint_pos_indexes]
 
-    def check_state_validity_joint(
-        self,
-        joint_pos,
-        qpos,
-        qvel,
-        is_grasped=False,
-        **kwargs,
-    ):
-        assert not is_grasped  # for mopa tasks we never consider teleporting with grasp
-        self.sim.data.qpos[self.ref_joint_pos_indexes] = joint_pos
-        self.sim.forward()
-        return not check_collisions(self, self.allowed_collision_pairs, self.env_name)
-
-    def backtracking_search_from_goal_joints(
-        self,
-        start_angles,
-        goal_angles,
-        qpos,
-        qvel,
-        movement_fraction=0.001,
-        *args,
-        **kwargs,
-    ):
-        curr_angles = goal_angles.copy()
-        collision = not self.check_state_validity_joint(curr_angles, qpos, qvel)
-        iters = 0
-        max_iters = int(1 / movement_fraction)
-        while collision and iters < max_iters:
-            curr_angles = curr_angles - movement_fraction * (goal_angles - start_angles)
-            valid = self.check_state_validity_joint(curr_angles, qpos, qvel)
-            collision = not valid
-            iters += 1
-        if collision:
-            return start_angles
-        else:
-            return curr_angles
-
     def update_mp_controllers(self):
         pass
 
@@ -736,47 +699,6 @@ class MoPAPSLEnv(PSLEnv):
 
         return result.err_norm
 
-    def backtracking_search_from_goal_pos(
-        self,
-        start_pos,
-        start_quat,
-        target_quat,
-        goal_pos,
-        qpos,
-        qvel,
-        movement_fraction=0.001,
-        *args,
-        **kwargs,
-    ):
-        curr_pos = goal_pos.copy()
-        self.set_robot_based_on_ee_pos(
-            goal_pos,
-            target_quat,
-            qpos,
-            qvel,
-            is_grasped=False,
-        )
-        collision = check_collisions(self, self.allowed_collision_pairs, self.env_name)
-        iters = 0
-        max_iters = int(1 / movement_fraction)
-        while collision and iters < max_iters:
-            curr_pos = curr_pos - movement_fraction * (goal_pos - start_pos)
-            self.set_robot_based_on_ee_pos(
-                curr_pos,
-                target_quat,
-                qpos,
-                qvel,
-                is_grasped=False,
-            )
-            collision = check_collisions(
-                self, self.allowed_collision_pairs, self.env_name
-            )
-            iters += 1
-        if collision:
-            return start_pos, start_quat
-        else:
-            return curr_pos, target_quat
-
     def set_robot_based_on_joint_angles(
         self,
         joint_pos,
@@ -784,14 +706,8 @@ class MoPAPSLEnv(PSLEnv):
         qvel,
         obj_name="",
     ):
-        object_pos, object_quat = self.get_sim_object_pose(obj_name)
-        gripper_qpos = self.sim.data.qpos[self.ref_gripper_joint_pos_indexes].copy()
-        gripper_qvel = self.sim.data.qvel[self.ref_gripper_joint_pos_indexes].copy()
-        old_eef_xpos, old_eef_xquat = get_site_pose(self, self.config["ik_target"])
         self.sim.data.qpos[self.ref_joint_pos_indexes] = joint_pos[:]
         self.sim.forward()
-        assert (self.sim.data.qpos[:7] - joint_pos).sum() < 1e-10
-        return 0
 
     def check_grasp(self, **kwargs):
         return check_grasp(self, self.env_name)
@@ -845,7 +761,10 @@ class MoPAPSLEnv(PSLEnv):
     def rebuild_controller(self):
         pass
 
-    def take_mp_step(self, state, is_grasped=False):
-        curr_qpos = self.sim.data.qpos.copy()
+    def take_mp_step(self, state, is_grasped=False, state_idx=0, start=None, step=0, num_steps=1):
+        state = start[:7] + (state - start[:7]) * ((step+1) / num_steps)
         self.sim.data.qpos[self.ref_joint_pos_indexes] = state[:]
         self.sim.forward()
+        self.intermediate_qposes.append(self.sim.data.qpos[:].copy())
+        self.intermediate_qvels.append(self.sim.data.qvel[:].copy())
+        self.update_intermediate_frames(state_idx)

@@ -157,6 +157,9 @@ def gen_video(env_name, camera_name, suite):
     states = np.load(f"states/{env_name}_{camera_name}_states.npz")
     print(renderer.components.keys())
     renderer.reset()
+    # clear images folder
+    for file in os.listdir("images"):
+        os.remove(os.path.join("images", file))
     for step in tqdm(range(states["qpos"].shape[0])):
         qpos = states["qpos"][step]
         qvel = states["qvel"][step]

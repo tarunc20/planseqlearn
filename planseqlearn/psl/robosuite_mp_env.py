@@ -892,86 +892,6 @@ class RobosuitePSLEnv(PSLEnv):
             self.sim.forward()
         self.rebuild_controller()
 
-    def backtracking_search_from_goal(
-        self,
-        start_pos,
-        start_quat,
-        target_pos,
-        target_quat,
-        qpos,
-        qvel,
-        is_grasped=False,
-        movement_fraction=0.001,
-        obj_name="",
-    ):
-        curr_pos = target_pos.copy()
-        self.set_robot_based_on_ee_pos(
-            curr_pos,
-            target_quat,
-            qpos,
-            qvel,
-            obj_name=obj_name
-        )
-        collision = self.check_robot_collision(
-            ignore_object_collision=is_grasped, obj_name=obj_name
-        )
-        iters = 0
-        max_iters = int(1 / movement_fraction)
-        while collision and iters < max_iters:
-            curr_pos = curr_pos - movement_fraction * (target_pos - start_pos)
-            self.set_robot_based_on_ee_pos(
-                curr_pos,
-                target_quat,
-                qpos,
-                qvel,
-                obj_name=obj_name,
-            )
-            collision = self.check_robot_collision(
-                ignore_object_collision=is_grasped, obj_name=obj_name,
-            )
-            iters += 1
-        if collision:
-            return np.concatenate((start_pos, start_quat))
-        else:
-            return np.concatenate((curr_pos, target_quat))
-
-    def backtracking_search_from_goal_joints(
-        self,
-        start_angles,
-        goal_angles,
-        qpos,
-        qvel,
-        obj_name="",
-        is_grasped=False,
-        movement_fraction=0.001,
-    ):
-        curr_angles = goal_angles.copy()
-        valid = self.check_state_validity_joint(
-            curr_angles,
-            qpos,
-            qvel,
-            is_grasped=is_grasped,
-            obj_name=obj_name,
-        )
-        collision = not valid
-        iters = 0
-        max_iters = int(1 / movement_fraction)
-        while collision and iters < max_iters:
-            curr_angles = curr_angles - movement_fraction * (goal_angles - start_angles)
-            valid = self.check_state_validity_joint(
-                curr_angles,
-                qpos,
-                qvel,
-                is_grasped=is_grasped,
-                obj_name=obj_name,
-            )
-            collision = not valid
-            iters += 1
-        if collision:
-            return start_angles
-        else:
-            return curr_angles
-
     def check_robot_collision(self, ignore_object_collision, obj_name="", verbose=False):
         obj_string = self.get_object_string(obj_name=obj_name)
         d = self.sim.data
@@ -1084,21 +1004,6 @@ class RobosuitePSLEnv(PSLEnv):
         else:
             return di
 
-    def check_state_validity_joint(
-        self,
-        joint_pos,
-        qpos,
-        qvel,
-        is_grasped,
-        obj_name="",
-    ):
-        self.set_robot_based_on_joint_angles(joint_pos, qpos, qvel, obj_name=obj_name)
-        valid = not self.check_robot_collision(
-            ignore_object_collision=is_grasped,
-            obj_name=obj_name,
-        )
-        return valid
-
     def get_joint_bounds(self):
         return self.sim.model.jnt_range[:7, :].copy().astype(np.float64)
 
@@ -1120,7 +1025,7 @@ class RobosuitePSLEnv(PSLEnv):
             )
             self.osc_ctrl.reset_goal()
 
-    def take_mp_step(self, state, is_grasped):
+    def take_mp_step(self, state, is_grasped, state_idx, start, step, num_steps):
         if self.use_joint_space_mp:
             policy_step = True
             if is_grasped:
@@ -1155,6 +1060,9 @@ class RobosuitePSLEnv(PSLEnv):
                 self.sim.step()
                 self._update_observables()
                 policy_step = False
+        self.intermediate_qposes.append(self.sim.data.qpos[:].copy())
+        self.intermediate_qvels.append(self.sim.data.qvel[:].copy())
+        self.update_intermediate_frames(state_idx)
 
     def get_eef_xpos(self):
         return self._eef_xpos

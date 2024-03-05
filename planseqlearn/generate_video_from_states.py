@@ -33,6 +33,8 @@ def robosuite_gen_video(env_name, camera_name):
     )
     env.reset()
     states = np.load(f"states/{env_name}_{camera_name}_states.npz")
+    for file in os.listdir("images"):
+        os.remove(os.path.join("images", file))
     for step in tqdm(range(states["qpos"].shape[0])):
         qpos = states["qpos"][step]
         qvel = states["qvel"][step]
@@ -46,7 +48,7 @@ def robosuite_gen_video(env_name, camera_name):
     for _ in range(1, len(os.listdir("images"))):
         im_path = os.path.join("images", "image_{}.png".format(_))
         frames.append(cv2.imread(im_path))
-    video_filename = f"rendered_videos/{env_name}_{camera_name}.mp4"
+    video_filename = f"{env_name}_{camera_name}.mp4"
     make_video(frames, "rendered_videos", video_filename)
 
 

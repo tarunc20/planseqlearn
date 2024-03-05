@@ -503,25 +503,6 @@ class KitchenPSLEnv(PSLEnv):
             self.sim.data.qvel[7:9] = gripper_qvel
             self.sim.forward()
 
-    def check_state_validity_joint(
-        self,
-        curr_pos,
-        qpos,
-        qvel,
-        is_grasped=False,
-        obj_name="",
-    ):
-        self.set_robot_based_on_joint_angles(
-            curr_pos,
-            qpos,
-            qvel,
-            obj_name=obj_name
-        )
-        valid = not self.check_robot_collision(
-            ignore_object_collision=False, obj_name=obj_name
-        )
-        return valid
-
     def get_robot_mask(self):
         fixed_view_physics = Camera_Render_Wrapper(
             self.sim,
@@ -555,69 +536,6 @@ class KitchenPSLEnv(PSLEnv):
 
     def compute_hardcoded_orientation(self, *args, **kwargs):
         pass
-
-    def backtracking_search_from_goal(
-        self,
-        start_pos,
-        start_quat,
-        target_pos,
-        target_quat,
-        qpos,
-        qvel,
-        is_grasped=False,
-        open_gripper_on_tp=True,
-        ignore_object_collision=False,
-        obj_idx=0,
-        movement_fraction=0.001,
-    ):
-        curr_pos = target_pos.copy()
-        self.set_robot_based_on_ee_pos(
-            curr_pos,
-            target_quat,
-            qpos,
-            qvel,
-            is_grasped=is_grasped,
-            obj_idx=obj_idx,
-            open_gripper_on_tp=open_gripper_on_tp,
-        )
-        collision = self.check_robot_collision(
-            ignore_object_collision=ignore_object_collision, obj_idx=obj_idx
-        )
-        iters = 0
-        max_iters = int(1 / movement_fraction)
-        while collision and iters < max_iters:
-            curr_pos = curr_pos - movement_fraction * (target_pos - start_pos)
-            self.set_robot_based_on_ee_pos(
-                curr_pos,
-                target_quat,
-                qpos,
-                qvel,
-                is_grasped=is_grasped,
-                obj_idx=obj_idx,
-                open_gripper_on_tp=open_gripper_on_tp,
-            )
-            collision = self.check_robot_collision(
-                ignore_object_collision=ignore_object_collision, obj_idx=obj_idx
-            )
-            iters += 1
-        if collision:
-            return np.concatenate((start_pos, start_quat))
-        else:
-            return np.concatenate((curr_pos, target_quat))
-
-    def backtracking_search_from_goal_joints(
-        self,
-        start_pos,
-        target_pos,
-        qpos,
-        qvel,
-        is_grasped=False,
-        open_gripper_on_tp=True,
-        ignore_object_collision=False,
-        obj_idx=0,
-        movement_fraction=0.001,
-    ):
-        raise NotImplementedError
 
     def get_observation(self):
         return np.zeros_like(self.observation_space.low)
@@ -665,10 +583,7 @@ class KitchenPSLEnv(PSLEnv):
         return check_object_grasp 
         
     def get_image(self):
-        im = self.sim.render(
-            width=960,
-            height=540,
-        )
+        im = self._wrapped_env.render(mode="rgb_array", imheight=960, imwidth=540, original=True)
         return im
 
     def compute_ik(self, target_pos, target_quat, qpos, qvel, og_qpos, og_qvel):

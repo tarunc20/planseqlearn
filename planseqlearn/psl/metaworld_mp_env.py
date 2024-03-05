@@ -1,4 +1,5 @@
 import numpy as np
+from tqdm import tqdm
 from planseqlearn.psl.inverse_kinematics import qpos_from_site_pose
 from planseqlearn.psl.mp_env import PSLEnv
 from planseqlearn.psl.vision_utils import *
@@ -564,46 +565,6 @@ class MetaworldPSLEnv(PSLEnv):
         else:
             return -np.inf
 
-    def backtracking_search_from_goal(
-        self,
-        start_pos,
-        start_quat,
-        target_pos,
-        target_quat,
-        qpos,
-        qvel,
-        is_grasped,
-        movement_fraction=0.001,
-        open_gripper_on_tp=True,
-        obj_name="",
-    ):
-        curr_pos = target_pos.copy()
-        self.set_robot_based_on_ee_pos(
-            target_pos=curr_pos, 
-            target_quat=target_quat, 
-            qpos=qpos, 
-            qvel=qvel, 
-            obj_name=obj_name,
-        )
-        collision = self.check_robot_collision(ignore_object_collision=is_grasped)
-        iters = 0
-        max_iters = int(1 / movement_fraction)
-        while collision and iters < max_iters:
-            curr_pos = curr_pos - movement_fraction * (target_pos - start_pos)
-            self.set_robot_based_on_ee_pos(
-                target_pos=curr_pos, 
-                target_quat=target_quat, 
-                qpos=qpos, 
-                qvel=qvel, 
-                obj_name=obj_name,
-            )
-            collision = self.check_robot_collision(ignore_object_collision=is_grasped)
-            iters += 1
-        if collision:
-            return np.concatenate((start_pos, start_quat))
-        else:
-            return np.concatenate((curr_pos, target_quat))
-
     def get_observation(self):
         return self._get_obs()
 
@@ -628,72 +589,21 @@ class MetaworldPSLEnv(PSLEnv):
     def rebuild_controller(self, *args, **kwargs):
         pass
 
-    def process_state_frames(self, frames):
-        if len(frames) < 50 and not self.break_mp:
-            return frames
-        else:
-            self.reset_robot_colors()
-            im = self.sim.render(
-                camera_name="corner2",
-                width=960,
-                height=540,
-            )
-            self.reset_robot_colors()
-            segmentation_map = np.flipud(
-                CU.get_camera_segmentation(
-                    camera_name="corner2",
-                    camera_width=960,
-                    camera_height=540,
-                    sim=self.sim,
-                )
-            )
-            # get robot segmentation mask
-            geom_ids = np.unique(segmentation_map[:, :, 1])
-            robot_ids = []
-            for geom_id in geom_ids:
-                if geom_id != -1:
-                    geom_name = self.sim.model.geom_id2name(geom_id)
-                    if geom_name == None:
-                        continue
-                    if (
-                        geom_name.startswith("robot")
-                        or geom_name.startswith("left")
-                        or geom_name.startswith("right")
-                        or geom_id == 27
-                    ):
-                        robot_ids.append(geom_id)
-            robot_ids.append(27)
-            robot_ids.append(28)
-            robot_mask = np.expand_dims(
-                np.any(
-                    [segmentation_map[:, :, 1] == robot_id for robot_id in robot_ids],
-                    axis=0,
-                ),
-                -1,
-            )
-            waypoint_mask = robot_mask
-            waypoint_img = robot_mask * im
-            for i in range(len(frames)):
-                frames[i] = (
-                    0.5 * (frames[i] * robot_mask)
-                    + 0.5 * (waypoint_img)
-                    + frames[i] * (1.0 - robot_mask)
-                )
-            self.set_robot_colors(np.array([0.1, 0.3, 0.7, 1.0]))
-            return frames
-
-    def get_mp_waypoints(self, *args, **kwargs):
-        return None, None
-
     def take_mp_step(
         self,
         state,
         is_grasped,
-        *args,
+        state_idx,
+        start=None, 
+        step=0, 
+        num_steps=1
     ):
         desired_rot = quat2mat(state[3:])
-        for s in range(50):
-            if np.linalg.norm(state[:3] - self._eef_xpos) < 1e-3:
+        prev_state = None
+        # state[:3] = start[:3] + (state[:3] - start[:3]) * ((step+1) / num_steps)
+        for s in tqdm(range(10)):
+            err = np.linalg.norm(state[:3] - self._eef_xpos)
+            if prev_state is not None and err < 1e-4:
                 self.break_mp = True
                 return
             self.set_xyz_action((state[:3] - self._eef_xpos))
@@ -703,3 +613,41 @@ class MetaworldPSLEnv(PSLEnv):
                 self.do_simulation([0.0, -0.0], n_frames=self.frame_skip)
             for site in self._target_site_config:  # taken from metaworld repo
                 self._set_pos_site(*site)
+        self.intermediate_qposes.append(self.sim.data.qpos[:].copy())
+        self.intermediate_qvels.append(self.sim.data.qvel[:].copy())
+        self.update_intermediate_frames(state_idx)
+
+    def get_robot_mask(self):
+        segmentation_map = np.flipud(
+            CU.get_camera_segmentation(
+                camera_name="corner2",
+                camera_width=960,
+                camera_height=540,
+                sim=self.sim,
+            )
+        )
+        # get robot segmentation mask
+        geom_ids = np.unique(segmentation_map[:, :, 1])
+        robot_ids = []
+        for geom_id in geom_ids:
+            if geom_id != -1:
+                geom_name = self.sim.model.geom_id2name(geom_id)
+                if geom_name == None:
+                    continue
+                if (
+                    geom_name.startswith("robot")
+                    or geom_name.startswith("left")
+                    or geom_name.startswith("right")
+                    or geom_id == 27
+                ):
+                    robot_ids.append(geom_id)
+        robot_ids.append(27)
+        robot_ids.append(28)
+        robot_mask = np.expand_dims(
+            np.any(
+                [segmentation_map[:, :, 1] == robot_id for robot_id in robot_ids],
+                axis=0,
+            ),
+            -1,
+        )
+        return robot_mask

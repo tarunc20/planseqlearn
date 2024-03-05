@@ -1,3 +1,4 @@
+import os
 import traceback
 import xml.etree.ElementTree as ET
 from collections import namedtuple
@@ -110,7 +111,7 @@ class Parser(BaseParser):
                     # removing weird cylinders in metaworld envs
                     continue
         
-            if 'indicator' in geom_name or geom_name.endswith('target') or geom_name.endswith('target0') or geom_name.endswith('target1') or 'collison' in geom_name:
+            if 'indicator' in geom_name or (geom_name.endswith('target') and geom_name != 'target') or geom_name.endswith('target0') or geom_name.endswith('target1') or 'collison' in geom_name:
                 continue
             
             geom_quat = string_to_array(geom.get("quat", "1 0 0 0"))
@@ -162,9 +163,38 @@ class Parser(BaseParser):
             if 'kettleroot' in geom_name and geom_rgba is None and geom_mat is None:
                 geom_mat = 'kettle_white'
                 geom_tex_name, geom_tex_file, geom_rgba = self.parse_material(geom_mat, geom_rgba) 
-            
+            import robosuite
+            robosuite_path = robosuite.__file__[:-len("__init__.py")]
+            if 'objA' in geom_name:
+                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/green-wood.png')
+                geom_tex_name = 'green-wood'
+                geom_rgba = None
+            if 'binA' in geom_name:
+                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/red-wood.png')
+                geom_tex_name = 'red-wood'
+                geom_rgba = None
+            if 'binB' in geom_name:
+                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/blue-wood.png')
+                geom_tex_name = 'blue-wood'
+                geom_rgba = None
+            if 'WrenchHandle' in geom_name:
+                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/green-wood.png')
+                geom_tex_name = 'green-wood'
+                geom_rgba = None       
+            if 'HammerHandle' in geom_name:
+                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/red-wood.png')
+                geom_tex_name = 'red-wood'
+                geom_rgba = None
+            if '4_part4' in geom_name or '2_part2' in geom_name or '1_part1' in geom_name or '0_part0' in geom_name: 
+                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/light-wood.png')
+                geom_tex_name = 'light-wood'
+                geom_rgba = None
+            if 'peg' in geom_name and rgba_str == '0.82 0.71 0.55 1':
+                # this is the mopa peg from assembly
+                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/light-wood.png')
+                geom_tex_name = 'light-wood'
+                geom_rgba = None
             class_id = element_id
-
             # load obj into nvisii
             try:
                 obj, entity_ids = load_object(
