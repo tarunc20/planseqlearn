@@ -13,6 +13,21 @@ import pickle
 
 from planseqlearn.utils import make_video 
 
+def get_inner_mp_envs(env, cfg):
+    if cfg.task_name.split("_", 1)[0] == "metaworld":
+        inner_env = env._env._env._env._env._env._env
+        mp_env = inner_env._env
+    elif cfg.task_name.split("_", 1)[0] == "robosuite":
+        inner_env = env._env._env._env._env._env
+        mp_env = inner_env._env
+    elif cfg.task_name.split("_", 1)[0] == "kitchen":
+        inner_env = env._env._env._env._env._env._env._env
+        mp_env = inner_env._env
+    elif cfg.task_name.split("_", 1)[0] == "mopa":
+        inner_env = env._env._env._env._env._env
+        mp_env = inner_env._env
+    return inner_env, mp_env
+
 def make_env(cfg, is_eval, use_mp=False):
     if cfg.task_name.split("_", 1)[0] == "metaworld":
         env = make_metaworld(
@@ -27,8 +42,6 @@ def make_env(cfg, is_eval, use_mp=False):
             use_vision_pose_estimation=cfg.use_vision_pose_estimation,
             use_mp=use_mp,
         )
-        inner_env = env._env._env._env._env._env
-        mp_env = inner_env._env
     elif cfg.task_name.split("_", 1)[0] == "robosuite":
         env = make_robosuite(
             name=cfg.task_name.split("_", 1)[1],
@@ -46,8 +59,6 @@ def make_env(cfg, is_eval, use_mp=False):
             use_vision_pose_estimation=cfg.use_vision_pose_estimation,
             use_mp=use_mp,
         )
-        inner_env = env._env._env._env._env._env
-        mp_env = inner_env._env
     elif cfg.task_name.split("_", 1)[0] == "kitchen":
         env = make_kitchen(
             name=cfg.task_name.split("_", 1)[1],
@@ -61,8 +72,6 @@ def make_env(cfg, is_eval, use_mp=False):
             text_plan=cfg.text_plan,
             use_mp=use_mp,
         )
-        inner_env = env._env._env._env._env._env._env
-        mp_env = inner_env._env
     elif cfg.task_name.split("_", 1)[0] == "mopa":
         env = make_mopa(
             name=cfg.task_name.split("_", 1)[1],
@@ -75,9 +84,7 @@ def make_env(cfg, is_eval, use_mp=False):
             use_vision_pose_estimation=cfg.use_vision_pose_estimation,
             use_mp=use_mp,
         )
-        inner_env = env._env._env._env._env._env
-        mp_env = inner_env._env
-    return env, inner_env, mp_env
+    return env
 
 def robosuite_gen_video(env_name, camera_name, suite, use_mp):
     # reset current hydra config if already parsed (but not passed in here)
@@ -92,10 +99,11 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
         cfg = compose(config_name="train_config", overrides=[f"task={suite}_{env_name}", f"camera_name={camera_name}", "psl=True"])
     # create environment 
     agent = torch.load(f"planseqlearn/psl_policies/{suite}/{env_name}.pt")["agent"]
-    env, inner_env, mp_env = make_env(cfg, is_eval=True, use_mp=use_mp)
+    env = make_env(cfg, is_eval=True, use_mp=use_mp)
     frames = []
     np.random.seed(0)
     o = env.reset()
+    inner_env, mp_env = get_inner_mp_envs(env, cfg)
     if use_mp:
         states = dict(
             qpos=mp_env.intermediate_qposes,
@@ -106,8 +114,8 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
         frames.extend(mp_env.intermediate_frames)
     else:
         states = dict(
-            qpos=[inner_env.sim.data.qpos.copy()],
-            qvel=[inner_env.sim.data.qvel.copy()],
+            qpos=[mp_env.sim.data.qpos.copy()],
+            qvel=[mp_env.sim.data.qvel.copy()],
         )
     num_success_steps = 5
     success_steps_ctr = 0
@@ -127,8 +135,8 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
                 frames.append(env.get_vid_image())
             else:
                 frames.append(env.get_image())
-            states["qpos"].append(inner_env.sim.data.qpos.copy())
-            states["qvel"].append(inner_env.sim.data.qvel.copy())
+            states["qpos"].append(mp_env.sim.data.qpos.copy())
+            states["qvel"].append(mp_env.sim.data.qvel.copy())
             if o.reward['success']:
                 success_steps_ctr += 1
             if success_steps_ctr == num_success_steps:
