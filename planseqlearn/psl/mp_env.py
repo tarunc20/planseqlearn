@@ -28,7 +28,6 @@ class PSLEnv(ProxyEnv):
         text_plan,
         # mp
         teleport_instead_of_mp=True,
-        teleport_on_grasp=True,
         use_joint_space_mp=True,
         # vision
         use_vision_pose_estimation=False,
@@ -41,7 +40,6 @@ class PSLEnv(ProxyEnv):
         Args:
             env: The environment to wrap.
             teleport_instead_of_mp (bool): Whether to teleport instead of motion planning.
-            teleport_on_grasp (bool): Whether to teleport on grasp.
             use_joint_space_mp (bool): Whether to use joint space motion planning instead of end-effector space motion planning.
             use_vision_pose_estimation (bool): Whether to use vision pose estimation.
             use_sam_segmentation (bool): Whether to use SAM for segmentation or the simulator.
@@ -57,7 +55,6 @@ class PSLEnv(ProxyEnv):
         self.use_vision_pose_estimation = use_vision_pose_estimation
         self.use_sam_segmentation = use_sam_segmentation
         self.use_vision_placement_check = use_vision_placement_check
-        self.teleport_on_grasp = teleport_on_grasp
         if self.use_sam_segmentation:
             self.dino, self.sam = build_models(
                 config_file="Grounded-Segment-Anything/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py",

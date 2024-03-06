@@ -58,7 +58,6 @@ class MoPA_Env_Wrapper(dm_env.Environment):
             env,
             env_name,
             ik_env=ik_env,
-            teleport_on_grasp=True,
             use_vision_pose_estimation=use_vision_pose_estimation,
             teleport_instead_of_mp=not use_mp,
             config=config,

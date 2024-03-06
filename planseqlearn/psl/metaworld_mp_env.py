@@ -601,7 +601,7 @@ class MetaworldPSLEnv(PSLEnv):
         desired_rot = quat2mat(state[3:])
         prev_state = None
         # state[:3] = start[:3] + (state[:3] - start[:3]) * ((step+1) / num_steps)
-        for s in tqdm(range(10)):
+        for s in tqdm(range(25)):
             err = np.linalg.norm(state[:3] - self._eef_xpos)
             if prev_state is not None and err < 1e-4:
                 self.break_mp = True
