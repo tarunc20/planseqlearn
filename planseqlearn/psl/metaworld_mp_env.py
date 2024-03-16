@@ -64,7 +64,7 @@ def set_robot_based_on_ee_pos(
         env.sim.data.qvel[7:9] = gripper_qvel
 
         # compute the transform between the old and new eef poses
-        ee_old_mat = pose2mat((old_eef_xpos, old_eef_xquat))
+        ee_old_mat = pose2mat((old_eef_xpos, env._eef_xquat))# used to be old_eef_xquat
         ee_new_mat = pose2mat((env._eef_xpos, env._eef_xquat))
         transform = ee_new_mat @ np.linalg.inv(ee_old_mat)
 
@@ -311,12 +311,8 @@ class MetaworldPSLEnv(PSLEnv):
                 ):
                     right_gripper_contact = True
             body_grasp = left_gripper_contact and right_gripper_contact 
-            if obj_str == "hammer":
-                height_diff = abs(self.get_sim_object_pose(obj_name)[0][2] - self.initial_object_pos_dict[obj_name][2])
-                return body_grasp and height_diff > 0.005
-            else:
-                height_diff = abs(self.get_sim_object_pose(obj_name)[0][2] - self.initial_object_pos_dict[obj_name][2])
-                return body_grasp and height_diff > 0.03
+            height_diff = self.get_sim_object_pose(obj_name)[0][2] - self.initial_object_pos_dict[obj_name][2]
+            return body_grasp and height_diff > 0.005
         return check_object_grasp
     
     def named_check_object_placement(self, obj_name): # not necessary 
