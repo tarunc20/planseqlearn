@@ -29,6 +29,80 @@ from mopa_rl.config.default_configs import (
 )
 
 from planseqlearn.utils import make_video
+import mujoco
+
+class SimWrapper():
+    def __init__(self, model, data):
+        self.model = model
+        self.data = data
+    def forward(self):
+        pass
+
+class ModelWrapper():
+    def __init__(self, model):
+        self.model = model
+        
+    def get_xml(self):
+        # string representation of the xml
+        mujoco.mj_saveLastXML('/tmp/temp.xml', self.model)
+        xml = open('/tmp/temp.xml').read()
+        xml_root = ET.fromstring(xml)
+        for elem in xml_root.iter():
+            for attr in elem.attrib:
+                if attr == 'file':
+                    menagerie_path = 'mujoco_menagerie'
+                    elem.attrib[attr] = os.path.join(menagerie_path, 'rethink_robotics_sawyer/assets', elem.attrib[attr])
+        xml = ET.tostring(xml_root, encoding='unicode')
+        return xml
+    def body_name2id(self, name):
+        return name2id(self.model, "body", name)
+def name2id(model, type_name, name):
+    obj_id = mujoco.mj_name2id(
+        model, mujoco.mju_str2Type(type_name.encode()), name.encode()
+    )
+    if obj_id < 0:
+        raise ValueError('No {} with name "{}" exists.'.format(type_name, name))
+    return obj_id
+class DataWrapper():
+    def __init__(self, data):
+        self.data = data
+    @property
+    def qpos(self):
+        return self.data.qpos
+    @property
+    def qvel(self):
+        return self.data.qvel
+    def get_geom_xpos(self, name):
+        model = self.data.model
+        geom_id = name2id(model, "geom", name)
+        return self.data.geom_xpos[geom_id]
+    def get_body_xpos(self, name):
+        model = self.data.model
+        body_id = name2id(model, "body", name)
+        return self.data.model.body_pos[body_id]
+    @property
+    def body_xmat(self):
+        quat = self.data.model.body_quat
+        xmat = []
+        for i in range(quat.shape[0]):
+            xmat_ = np.zeros((9, 1))
+            mujoco.mju_quat2Mat(xmat_,quat[i].reshape(-1, 1))
+            xmat.append(xmat_)
+        xmat = np.array(xmat)[:, :, 0]
+        return xmat
+class MenagerieEnv():
+    def __init__(self):
+        model = mujoco.MjModel.from_xml_path("mujoco_menagerie/rethink_robotics_sawyer/scene.xml")
+        data = mujoco.MjData(model)
+        self.sim = SimWrapper(ModelWrapper(model), DataWrapper(data))
+        self.env_name = 'menagerie'
+        self.data = data
+
+    def reset(self):
+        mujoco.mj_step(self.data.model, self.data)
+    def step(self, action):
+        pass
+    
 
 def gen_video(env_name, camera_name, suite):
     if suite == 'metaworld':
@@ -135,9 +209,8 @@ def gen_video(env_name, camera_name, suite):
             xml = ET.tostring(xml_root, encoding='unicode')
             return xml
         env.get_modified_xml = get_xml
-    # check that no more 
+        env.env_name = env_name
     env.reset()
-    frames = []
     cfg = {
         "img_path": "images/",
         "width": 1980,
@@ -166,8 +239,6 @@ def gen_video(env_name, camera_name, suite):
         env.sim.data.qpos[:] = qpos
         env.sim.data.qvel[:] = qvel
         env.sim.forward()
-        im = env.render(mode='rgb_array')
-        frames.append(im)
         renderer.update()
         renderer.render()
     # load png files from images folder
