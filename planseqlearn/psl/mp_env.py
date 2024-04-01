@@ -8,6 +8,7 @@ from collections import OrderedDict
 import sys
 
 try:
+    sys.path.insert(0, "/home/tarunc/Desktop/research/contact_graspnet/ompl/py-bindings")
     from ompl import base as ob
     from ompl import geometric as og
 except ImportError:
@@ -169,13 +170,17 @@ class PSLEnv(ProxyEnv):
         if curr_plan_stage_finished: # advance plan to next stage using motion planner
             self.curr_plan_stage += 1
             target_pos, target_quat = self.get_target_pos()
+            if self.env_name.startswith("kitchen"):
+                obj_name = self.text_plan[self.curr_plan_stage][0]
+            else:
+                obj_name = self.text_plan[self.curr_plan_stage - (self.curr_plan_stage % 2)][0]
             if self.teleport_instead_of_mp:
                 error = self.set_robot_based_on_ee_pos(
                     target_pos.copy(),
                     target_quat.copy(),
                     self.reset_qpos,
                     self.reset_qvel,
-                    obj_name=self.text_plan[self.curr_plan_stage - (self.curr_plan_stage % 2)][0],
+                    obj_name=obj_name,
                 )
             else:
                 error = self.mp_to_point(
@@ -183,7 +188,7 @@ class PSLEnv(ProxyEnv):
                     target_quat.copy(),
                     self.reset_qpos,
                     self.reset_qvel,
-                    obj_name=self.text_plan[self.curr_plan_stage - (self.curr_plan_stage % 2)][0],
+                    obj_name=obj_name,
                     get_intermediate_frames=get_intermediate_frames,
                 )
             self.curr_postcondition = self.get_curr_postcondition_function()
@@ -454,7 +459,7 @@ class PSLEnv(ProxyEnv):
         qvel,
         is_grasped=False,
         obj_name="",
-        planning_time=20.0,
+        planning_time=5.0,
         get_intermediate_frames=False,
     ):
         if "place" in self.text_plan[self.curr_plan_stage][1]:
@@ -489,7 +494,7 @@ class PSLEnv(ProxyEnv):
                     qpos,
                     qvel,
                     is_grasped=is_grasped,
-                    obj_name=obj_name 
+                    obj_name=obj_name,
                 )
                 return valid
             else:
@@ -580,6 +585,7 @@ class PSLEnv(ProxyEnv):
                 converted_path, qpos, qvel, obj_name=obj_name
             )
             self._wrapped_env.reset()
+            # use set robot instead?
             self.sim.data.qpos[:] = og_qpos.copy()
             self.sim.data.qvel[:] = og_qvel.copy()
             self.sim.forward()
@@ -587,6 +593,7 @@ class PSLEnv(ProxyEnv):
             self.break_mp = False
             self.set_robot_colors(np.array([0.1, 0.3, 0.7, 1.0]))
             self.get_intermediate_frames = get_intermediate_frames
+            
             converted_path = converted_path[1:] # remove the start state
             for state_idx, state in tqdm(enumerate(converted_path)):
                 start_qpos = self.sim.data.qpos[:].copy()
@@ -607,6 +614,7 @@ class PSLEnv(ProxyEnv):
             self.reset_robot_colors()
             self.rebuild_controller()
             print(f"Error: {np.linalg.norm(self._eef_xpos - target_pos)}")
+            print(self._eef_xpos, target_pos)
             return np.linalg.norm(self._eef_xpos - target_pos)
 
     def update_intermediate_frames(self, state_idx):

@@ -1,4 +1,6 @@
 import mujoco_py
+import sys
+sys.path.remove("/home/tarunc/Desktop/research/d4rl")
 import argparse
 
 import omegaconf 
@@ -22,7 +24,7 @@ def get_inner_mp_envs(env, cfg):
         mp_env = inner_env._env
     elif cfg.task_name.split("_", 1)[0] == "kitchen":
         inner_env = env._env._env._env._env._env._env._env
-        mp_env = inner_env._env
+        mp_env = inner_env#._env
     elif cfg.task_name.split("_", 1)[0] == "mopa":
         inner_env = env._env._env._env._env._env
         mp_env = inner_env._env
@@ -104,6 +106,7 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
     np.random.seed(0)
     o = env.reset()
     inner_env, mp_env = get_inner_mp_envs(env, cfg)
+    mp_idxs = []
     if use_mp:
         states = dict(
             qpos=mp_env.intermediate_qposes,
@@ -112,19 +115,21 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
         mp_env.intermediate_qposes = []
         mp_env.intermediate_qvels = []
         frames.extend(mp_env.intermediate_frames)
+        mp_idxs.extend([_ for _ in range(len(frames))])
     else:
         states = dict(
             qpos=[mp_env.sim.data.qpos.copy()],
             qvel=[mp_env.sim.data.qvel.copy()],
         )
-    num_success_steps = 5
+    num_success_steps = 25
     success_steps_ctr = 0
     with torch.no_grad():
-        for _ in range(100):
+        for _ in range(200):
             act = agent.act(o.observation, step=_, eval_mode=True)
             o = env.step(act)
             if use_mp:
                 if len(mp_env.intermediate_qposes) > 0:
+                    mp_idxs.extend([len(states) + _ for _ in range(len(mp_env.intermediate_qposes))])
                     states['qpos'].extend(mp_env.intermediate_qposes)
                     states['qvel'].extend(mp_env.intermediate_qvels)
                     mp_env.intermediate_qposes = []
@@ -149,10 +154,12 @@ def robosuite_gen_video(env_name, camera_name, suite, use_mp):
         with open('failed_envs.txt', 'a') as f:
             f.write(f"{env_name}\n")
     # assert o.reward['success'], f"Failed to complete task {env_name}"
-    if use_mp and o.reward['success']:
-        states["qpos"] = np.array(states["qpos"])
-        states["qvel"] = np.array(states["qvel"])
-        np.savez(f"states/{env_name}_{camera_name}_states.npz", **states)
+    #if use_mp and o.reward['success']:
+    # if o.reward['success']:
+    states["qpos"] = np.array(states["qpos"])
+    states["qvel"] = np.array(states["qvel"])
+    np.savez(f"states/{env_name}_{camera_name}_states.npz", **states)
+    np.savez(f"mp_idxs/{env_name}_{camera_name}_mp_idxs.npz", mp_idxs=np.array(mp_idxs))
     video_filename = f"{env_name}_{camera_name}.mp4"
     make_video(frames, "videos", video_filename)
 

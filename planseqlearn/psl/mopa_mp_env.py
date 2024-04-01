@@ -104,9 +104,14 @@ def cart2joint_ac(
     target_qpos[env.ref_joint_pos_indexes] = result.qpos[
         env.ref_joint_pos_indexes
     ].copy()
-    pre_converted_ac = (
-        target_qpos[env.ref_joint_pos_indexes] - curr_qpos[env.ref_joint_pos_indexes]
-    ) / env.env._ac_scale #
+    try:
+        pre_converted_ac = (
+            target_qpos[env.ref_joint_pos_indexes] - curr_qpos[env.ref_joint_pos_indexes]
+        ) / env.env._ac_scale #
+    except:
+        pre_converted_ac = (
+            target_qpos[env.ref_joint_pos_indexes] - curr_qpos[env.ref_joint_pos_indexes]
+        ) / env._ac_scale #
     if "gripper" in ac.keys():
         pre_converted_ac = np.concatenate((pre_converted_ac, ac["gripper"]))
     converted_ac = collections.OrderedDict([("default", pre_converted_ac)])
@@ -265,7 +270,10 @@ class MoPAWrapper(ProxyEnv):
             reward_lift = 0.0
             object_z_locs = self._wrapped_env.sim.data.body_xpos[cube_body_id][2]
             if reward_grasp > 0.0:
-                z_target = self._wrapped_env.env._get_pos("bin1")[2] + 0.45
+                try:
+                    z_target = self._wrapped_env.env._get_pos("bin1")[2] + 0.45
+                except:
+                    z_target = self._wrapped_env._get_pos("bin1")[2] + 0.45
                 z_dist = np.maximum(z_target - object_z_locs, 0.0)
                 reward_lift = grasp_mult + (1 - np.tanh(15 * z_dist)) * (
                     lift_mult - grasp_mult
@@ -296,6 +304,7 @@ class MoPAWrapper(ProxyEnv):
                 reward_reach += 0.4 * (1 - np.tanh(15 * dist_to_hole))
             reward += reward_reach
             success = False
+            print(f"Dist: {dist_to_hole_bottom}")
             if dist_to_hole_bottom < 0.025:
                 success = True
                 terminal = True
@@ -586,7 +595,10 @@ class MoPAPSLEnv(PSLEnv):
         pass
 
     def get_observation(self):
-        obs = self._wrapped_env.env._get_obs()
+        try:
+            obs = self._wrapped_env.env._get_obs()
+        except:
+            obs = self._wrapped_env._get_obs()
         observation = np.array([])
         for k in obs.keys():
             observation = np.concatenate((observation, obs[k]))
@@ -723,9 +735,14 @@ class MoPAPSLEnv(PSLEnv):
         )
 
     def get_vid_image(self):
-        return np.flipud(
-            self.sim.render(camera_name="frontview", width=960, height=540)
-        )[:, :, ::-1]
+        if "Push" in self.env_name:
+            return np.flipud(
+                self.sim.render(camera_name="frontview", width=960, height=540)
+            )[:, :, ::-1]
+        else:
+            return np.flipud(
+                self.sim.render(camera_name="visview", width=960, height=540)
+            )[:, :, ::-1]
 
     def take_mp_step(
         self,
@@ -739,12 +756,20 @@ class MoPAPSLEnv(PSLEnv):
     def get_robot_mask(self):
         sim = self.sim
         self.sim.forward()
-        segmentation_map = CU.get_camera_segmentation(
-            camera_name="frontview",
-            camera_width=960,
-            camera_height=540,
-            sim=sim,
-        )
+        if "Push" in self.env_name:
+            segmentation_map = CU.get_camera_segmentation(
+                camera_name="frontview",
+                camera_width=960,
+                camera_height=540,
+                sim=sim,
+            )
+        else:
+            segmentation_map = CU.get_camera_segmentation(
+                camera_name="visview",
+                camera_width=960,
+                camera_height=540,
+                sim=sim,
+            )
         geom_ids = np.unique(segmentation_map[:, :, 1])
         robot_mask = np.expand_dims(
             np.any(

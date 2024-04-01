@@ -18,6 +18,7 @@ def load_object(
     geom_tex_file,
     class_id,
     meshes,
+    env_type="mopa",
 ):
     """
     Function that initializes the meshes in the memory.
@@ -48,18 +49,29 @@ def load_object(
 
         meshes (dict): Meshes for the object
     """
-
+    if geom_name == "tablelink2":
+        assert False
+    if env_type == "mopa" and geom_name in ["bin10", "bin12", "bin14", "bin16", "bin18"]:
+        assert False 
+    print(f"Geom name:{geom_name}")
     primitive_types = ["box", "cylinder"]
     component = None
 
     if geom_type == "box":
-
-        component = nvisii.entity.create(
-            name=geom_name,
-            mesh=nvisii.mesh.create_box(name=geom_name, size=nvisii.vec3(geom_size[0], geom_size[1], geom_size[2])),
-            transform=nvisii.transform.create(geom_name),
-            material=nvisii.material.create(geom_name),
-        )
+        if env_type == "mopa" and "table" in geom_name:
+            component = nvisii.entity.create(
+                name=geom_name,
+                mesh=nvisii.mesh.create_box(name=geom_name, size=nvisii.vec3(0.7, 0.7, geom_size[2])),
+                transform=nvisii.transform.create(geom_name),
+                material=nvisii.material.create(geom_name),
+            )
+        else:
+            component = nvisii.entity.create(
+                name=geom_name,
+                mesh=nvisii.mesh.create_box(name=geom_name, size=nvisii.vec3(geom_size[0], geom_size[1], geom_size[2])),
+                transform=nvisii.transform.create(geom_name),
+                material=nvisii.material.create(geom_name),
+            )
 
     elif geom_type == "cylinder":
 
@@ -91,7 +103,9 @@ def load_object(
     elif geom_type == "mesh":
         filename = meshes[geom.attrib["mesh"]]["file"]
         # filename = os.path.splitext(filename)[0] + ".obj"
-
+        if env_type=="mopa":
+            DIR = "/home/tarunc/Desktop/research/mopa-rl/env/assets"
+            filename = DIR + filename[2:]
         component = nvisii.import_scene(
             file_path=filename,
             position=nvisii.vec3(geom_pos[0], geom_pos[1], geom_pos[2]),
@@ -108,12 +122,17 @@ def load_object(
 
     if geom_type in primitive_types:
         component.get_transform().set_position(nvisii.vec3(float(geom_pos[0]), float(geom_pos[1]), float(geom_pos[2])))
-
+    print(f"Geom tex file: {geom_tex_file, geom_tex_name}")
     if geom_tex_file is not None and geom_tex_name is not None and geom_type != "mesh":
 
         texture = nvisii.texture.get(geom_tex_name)
 
         if texture is None:
+            if env_type=="mopa":
+                DIR = "/home/tarunc/Desktop/research/mopa-rl/env/assets"
+                geom_tex_file = DIR + geom_tex_file[2:]
+            if env_type == "metaworld" and ("Retaining" in geom_name):
+                geom_tex_file = "wood.jpeg"
             texture = nvisii.texture.create_from_file(name=geom_tex_name, path=geom_tex_file)
 
         component.get_material().set_base_color_texture(texture)
@@ -129,10 +148,19 @@ def load_object(
                 for entity in component.entities:
                     entity.get_material().set_base_color(nvisii.vec3(0.05, 0.05, 0.05))
         else:
-            if geom_tex_file is not None and geom_tex_name is not None:
+            if (geom_tex_file is not None and geom_tex_name is not None):
                 texture = nvisii.texture.get(geom_tex_name)
 
                 if texture is None:
+                    if env_type=="mopa" and "part" in geom_name:
+                        DIR = "/home/tarunc/Desktop/research/mopa-rl/env/assets"
+                        geom_tex_file = DIR + "/" + geom_tex_file
+                    if env_type == "mopa" and "bin" in geom_name:
+                        geom_tex_file = DIR + "wood.jpeg"
+                    if env_type == "mopa" and "cube" in geom_name:
+                        geom_tex_file = "coke.jpeg"
+                    if (env_type == "mopa" or env_type == "metaworld") and "table" in geom_name:
+                        geom_tex_file = "wood.jpeg"
                     texture = nvisii.texture.create_from_file(name=geom_tex_name, path=geom_tex_file)
 
                 if isinstance(component, nvisii.scene):
@@ -144,5 +172,20 @@ def load_object(
                         entity.get_material().set_base_color(nvisii.vec3(geom_rgba[0], geom_rgba[1], geom_rgba[2]))
                 else:
                     component.get_material().set_base_color(nvisii.vec3(geom_rgba[0], geom_rgba[1], geom_rgba[2]))
-
+            # metaworld specific 
+            if env_type == "metaworld":
+                if "rail" in geom_name or geom_name == "tablelink2":
+                    tex_file = "wood.jpeg"
+                    texture = nvisii.texture.create_from_file(name=geom_tex_name, path=geom_tex_file)
+                    if isinstance(component, nvisii.scene):
+                        for entity in component.entities:
+                            entity.get_material().set_base_color_texture(texture)
+            # mopa specific
+    if env_type == "mopa":
+        if "table" in geom_name:
+            tex_file = "wood.jpeg"
+            texture = nvisii.texture.create_from_file(name="table_visual", path=tex_file)
+            if isinstance(component, nvisii.scene):
+                for entity in component.entities:
+                    entity.get_material().set_base_color_texture(texture)
     return component, entity_ids

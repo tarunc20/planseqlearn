@@ -1,6 +1,8 @@
 from copy import copy
 import os
 import random
+import sys
+sys.path.remove("/home/tarunc/Desktop/research/d4rl")
 import time
 import gym
 import mujoco_py
@@ -102,9 +104,34 @@ class MenagerieEnv():
         mujoco.mj_step(self.data.model, self.data)
     def step(self, action):
         pass
+
+ENV_NAME_MAP = {
+    "metaworld": {
+        "assembly-v2": "MW-Assembly",
+        "disassemble-v2": "MW-Disassemble",
+        "bin-picking-v2": "MW-Bin-Picking",
+        "hammer-v2": "MW-Hammer",
+    },
+    "kitchen": {
+        "kitchen-slide-v0": "K-Slide",
+        "kitchen-light-v0": "K-Light",
+        "kitchen-tlb-v0": "K-Burner",
+        "kitchen-microwave-v0": "K-Microwave",
+        "kitchen-kettle-v0": "K-Kettle",
+        "kitchen-ms5-v0": "K-MS5",
+        "kitchen-ms10-v1": "K-MS10",
+    },
+    "mopa": {
+        "SawyerAssemblyObstacle-v0": "OS-Assembly",
+        "SawyerLiftObstacle-v0": "OS-Lift",
+        "SawyerPushObstacle-v0": "OS-Push"
+    }
+}
     
 
 def gen_video(env_name, camera_name, suite):
+    np.random.seed(0)
+    random.seed(0)
     if suite == 'metaworld':
         # create environment
         mt = metaworld.MT1(env_name, seed=0)
@@ -210,10 +237,11 @@ def gen_video(env_name, camera_name, suite):
             return xml
         env.get_modified_xml = get_xml
         env.env_name = env_name
+    frame_env_name = ENV_NAME_MAP[suite][env_name]
     env.reset()
     cfg = {
         "img_path": "images/",
-        "width": 1980,
+        "width": 1920, #1980, # used to be 1980 by 1080
         "height": 1080,
         "spp": 512,
         "use_noise": False,
@@ -241,11 +269,15 @@ def gen_video(env_name, camera_name, suite):
         env.sim.forward()
         renderer.update()
         renderer.render()
+    # load mp idxs
+    mp_idxs = list(np.load(f"mp_idxs/{env_name}_{camera_name}_mp_idxs.npz")['mp_idxs'])
     # load png files from images folder
     frames = []
-    for _ in range(1, len(os.listdir("images"))):
-        im_path = os.path.join("images", "image_{}.png".format(_))
+    for idx in range(1, len(os.listdir("images"))):
+        im_path = os.path.join("images", "image_{}.png".format(idx))
         frames.append(cv2.imread(im_path))
+        if (idx - 1) not in mp_idxs:
+            frames.append(cv2.imread(im_path))
     video_filename = f"{env_name}_{camera_name}.mp4"
     make_video(frames, "rendered_videos", video_filename)
 
@@ -253,7 +285,8 @@ def gen_video(env_name, camera_name, suite):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--env_name", type=str, help="Name of the environment")
-    parser.add_argument("--camera_name", type=str, help="Name of the environment")
+    parser.add_argument("--camera_name", type=str, help="Camera name")
     parser.add_argument("--suite", type=str, help="Name of the suite")
+    parser.add_argument("--clean", action="store_true", help="Generate clean video")
     args = parser.parse_args()
     gen_video(args.env_name, args.camera_name, args.suite)

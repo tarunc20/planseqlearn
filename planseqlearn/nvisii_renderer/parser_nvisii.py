@@ -186,7 +186,7 @@ class Parser(BaseParser):
                 geom_tex_name = 'red-wood'
                 geom_rgba = None
             if '4_part4' in geom_name or '2_part2' in geom_name or '1_part1' in geom_name or '0_part0' in geom_name: 
-                geom_tex_file = os.path.join(robosuite_path, 'models/assets/textures/light-wood.png')
+                geom_tex_file = 'models/assets/textures/light-wood.png'
                 geom_tex_name = 'light-wood'
                 geom_rgba = None
             if 'peg' in geom_name and rgba_str == '0.82 0.71 0.55 1':
@@ -197,6 +197,14 @@ class Parser(BaseParser):
             class_id = element_id
             # load obj into nvisii
             try:
+                if "v2" in str(type(self.env)):
+                    env_type = "metaworld"
+                elif "Sawyer" in str(type(self.env)):
+                    env_type = "mopa"
+                elif "v0" in str(type(self.env)):
+                    env_type = "kitchen"
+                else:
+                    env_type = "robosuite"
                 obj, entity_ids = load_object(
                     geom=geom,
                     geom_name=geom_name,
@@ -210,8 +218,9 @@ class Parser(BaseParser):
                     geom_tex_file=geom_tex_file,
                     class_id=class_id,  # change
                     meshes=self.meshes,
+                    env_type=env_type,
                 )
-                print(f"Loaded {geom_name} {geom_type} {geom_size} {geom_scale} {geom_pos} {geom_quat} {geom_mat} {geom_tex_name} {geom_tex_file} {geom_rgba}")
+                #print(f"Loaded {geom_name} {geom_type} {geom_size} {geom_scale} {geom_pos} {geom_quat} {geom_mat} {geom_tex_name} {geom_tex_file} {geom_rgba}")
             except:
                 print(traceback.format_exc())
                 print(geom_name, geom_type)

@@ -258,6 +258,7 @@ class KitchenPSLEnv(PSLEnv):
         ignore_object_collision=False,
         obj_name="",
     ):
+        ignore_object_collision = False # always true for kitchen
         obj_string = get_object_string(self, obj_name=self.text_plan[self.curr_plan_stage][0])
         d = self.sim.data
         for coni in range(d.ncon):
@@ -331,34 +332,64 @@ class KitchenPSLEnv(PSLEnv):
     def get_mp_target_pose(self, obj_name):
         if "slide" in obj_name:
             object_pos = self.get_site_xpos("schandle1")
-            object_quat = np.zeros(4)  # doesn't really matter
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)  # doesn't really matter
+            else:
+                object_quat = np.array([0.41907477, -0.54234207, -0.43320662, -0.5852976])
         elif "top burner" in obj_name:
             object_pos = self.get_site_xpos("tlbhandle")
-            object_quat = np.zeros(4)  # doesn't really matter
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)  # doesn't really matter
+            else:
+                object_quat = np.array([0.4734722, -0.41937166, -0.3867572 , -0.6710961])
         elif "bottom left burner" in obj_name:
             object_pos = self.get_site_xpos("blbhandle")
-            object_quat = np.zeros(4)
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)
+            else:
+                object_quat = np.array([ 0.47932166, -0.41441336, -0.4175337 , -0.65128934])
         elif "bottom right burner" in obj_name:
             object_pos = self.get_site_xpos("brbhandle")
-            object_quat = np.zeros(4)
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)
+            else:
+                object_quat = np.array([0.46216223, -0.40978193, -0.4075058, -0.6726247])
         elif "top right burner" in obj_name:
             object_pos = self.get_site_xpos("trbhandle")
-            object_quat = np.zeros(4)
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)
+            else:
+                object_quat = np.array([ 0.4599988 , -0.43491352, -0.35994446, -0.6853404])
         elif "left hinge cabinet" in obj_name:
             object_pos = self.get_site_xpos("hchandle_left1")
             object_quat = np.zeros(4)  # doesn't really matter
         elif "hinge cabinet" in obj_name:
             object_pos = self.get_site_xpos("hchandle1")
-            object_quat = np.zeros(4)
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)
+            else:
+                object_quat = np.array([ 0.5064638 , -0.41581115, -0.37434417, -0.6560958 ])
         elif "light" in obj_name:
             object_pos = self.get_site_xpos("lshandle1")
-            object_quat = np.zeros(4)  # doesn't really matter
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)  # doesn't really matter
+            else:
+                object_quat = np.array([0.48666263, -0.41248605, -0.41520733, -0.64855045])
         elif "microwave" in obj_name:
             object_pos = self.get_site_xpos("mchandle1") + np.array([0, -0.05, 0])
-            object_quat = np.zeros(4)  # doesn't really matter
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)  # doesn't really matter
+            else:
+                if "close" in obj_name:
+                    object_quat = np.array([ 0.43775308, -0.52973473, -0.5177933 , -0.50955254])
+                else:
+                    object_quat = np.array([0.4369543 , -0.54296637, -0.50993353, -0.50420886])
         elif "kettle" in obj_name:
             object_pos = self.get_site_xpos("khandle1")
-            object_quat = np.zeros(4)  # doesn't really matter
+            if self.teleport_instead_of_mp:
+                object_quat = np.zeros(4)  # doesn't really matter
+            else:
+                object_quat = np.array([ 0.46962702, -0.51571894, -0.47084093, -0.5401789])
         if self.use_sam_segmentation:
             object_pos = self.sam_object_pose[obj_name] + np.array([0., -0.05, 0])
             object_quat = np.zeros(4)
@@ -471,7 +502,7 @@ class KitchenPSLEnv(PSLEnv):
 
         self.sim.data.qpos[:7] = joint_pos
         self.sim.forward()
-        assert (self.sim.data.qpos[:7] - joint_pos).sum() < 1e-10
+        assert (self.sim.data.qpos[:7] - joint_pos).sum() < 1e-10, f"{(self.sim.data.qpos[:7] - joint_pos).sum()}"
 
         if is_grasped:
             self.sim.data.qpos[7:9] = gripper_qpos
@@ -587,7 +618,7 @@ class KitchenPSLEnv(PSLEnv):
         return im
 
     def compute_ik(self, target_pos, target_quat, qpos, qvel, og_qpos, og_qvel):
-        target_angles = qpos_from_site_pose_kitchen(
+        qpos_from_site_pose_kitchen(
             self,
             "end_effector",
             target_pos=target_pos,
@@ -608,7 +639,8 @@ class KitchenPSLEnv(PSLEnv):
             max_update_norm=2.0,
             progress_thresh=20.0,
             max_steps=1000,
-        ).qpos.copy()[:7]
+        )
+        target_angles = self.sim.data.qpos[:7].copy()
         self.sim.data.qpos[:] = og_qpos
         self.sim.data.qvel[:] = og_qvel
         self.sim.forward()
@@ -631,6 +663,8 @@ class KitchenPSLEnv(PSLEnv):
         self,
         state,
         is_grasped,
+        *args,
+        **kwargs,
     ):
         curr = self.sim.data.qpos[:7]
         new_state = curr + (state - curr) / 5
@@ -640,3 +674,5 @@ class KitchenPSLEnv(PSLEnv):
             self.reset_qvel,
             obj_name=self.text_plan[self.curr_plan_stage][0],
         )
+        self.intermediate_qposes.append(self.sim.data.qpos[:].copy())
+        self.intermediate_qvels.append(self.sim.data.qvel[:].copy())

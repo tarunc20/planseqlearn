@@ -100,18 +100,20 @@ class NVISIIRenderer(Renderer):
         self.vision_modalities = vision_modalities
 
         self.img_cntr = 0
-        
         if issubclass(type(self.env), MujocoEnv):
             self.env_type = 'metaworld'
-        elif hasattr(self.env, 'env'):
-            if issubclass(type(env.env), BaseEnv):
-                self.env_type = 'mopa'
-                self.env_name = self.env.env_name
+        elif hasattr(self.env, 'env') or hasattr(self.env, 'use_target_robot_indicator'):
+            self.env_type = "mopa"
+            self.env_name = self.env.env_name
+            # if issubclass(type(env.env), BaseEnv):
+            #     self.env_type = 'mopa'
+            #     self.env_name = self.env.env_name
         elif hasattr(self.env, 'env_name'):
             if self.env.env_name == 'menagerie':
                 self.env_type = 'menagerie'
         else:
             self.env_type = 'kitchen'
+            self.light_set = False 
 
         # enable interactive mode when debugging
         if debug_mode:
@@ -146,24 +148,60 @@ class NVISIIRenderer(Renderer):
     def _init_nvisii_components(self):
         self._init_lighting()
         self._init_floor(image="plywood-4k.jpg")
-        # self._init_walls(image="plaster-wall-4k.jpg")
+        self._init_walls(image="plaster-wall-4k.jpg")
         self._init_camera()
 
         self._load()
 
     def _init_lighting(self):
         # Intiailizes the lighting
-        self.light_1 = nvisii.entity.create(
-            name="light",
-            mesh=nvisii.mesh.create_sphere("light"),
-            transform=nvisii.transform.create("light"),
-        )
+        # self.light_1 = nvisii.entity.create(
+        #     name="light",
+        #     mesh=nvisii.mesh.create_sphere("light"),
+        #     transform=nvisii.transform.create("light"),
+        # )
 
-        self.light_1.set_light(nvisii.light.create("light"))
+        # self.light_1.set_light(nvisii.light.create("light"))
 
-        self.light_1.get_light().set_intensity(150)  # intensity of the light
-        self.light_1.get_transform().set_scale(nvisii.vec3(0.3))  # scale the light down
-        self.light_1.get_transform().set_position(nvisii.vec3(3, 3, 4))  # sets the position of the light
+        # self.light_1.get_light().set_intensity(150)  # intensity of the light
+        # self.light_1.get_transform().set_scale(nvisii.vec3(0.3))  # scale the light down
+        # self.light_1.get_transform().set_position(nvisii.vec3(-3, 3, 7)) # used to be 3, 3, 4  # sets the position of the light
+        if self.env_type == "kitchen":
+            self.light_2 = nvisii.entity.create(
+                name="light2",
+                mesh=nvisii.mesh.create_sphere("light2"),
+                transform=nvisii.transform.create("light2"),
+            )
+
+            self.light_2.set_light(nvisii.light.create("light2"))
+
+            self.light_2.get_light().set_intensity(150)  # intensity of the light
+            self.light_2.get_transform().set_scale(nvisii.vec3(0.3))  # scale the light down
+            self.light_2.get_transform().set_position(nvisii.vec3(0, 0, 7)) # used to be 3, 3, 4  # sets the position of the light
+        elif self.env_type == "metaworld":
+            self.light_2 = nvisii.entity.create(
+                name="light2",
+                mesh=nvisii.mesh.create_sphere("light2"),
+                transform=nvisii.transform.create("light2"),
+            )
+
+            self.light_2.set_light(nvisii.light.create("light2"))
+
+            self.light_2.get_light().set_intensity(150)  # intensity of the light
+            self.light_2.get_transform().set_scale(nvisii.vec3(0.3))  # scale the light down
+            self.light_2.get_transform().set_position(nvisii.vec3(0, 0, 5.5)) # used to be 3, 3, 4  # sets the position of the light
+        elif self.env_type == "mopa":
+            self.light_2 = nvisii.entity.create(
+                name="light2",
+                mesh=nvisii.mesh.create_sphere("light2"),
+                transform=nvisii.transform.create("light2"),
+            )
+
+            self.light_2.set_light(nvisii.light.create("light2"))
+
+            self.light_2.get_light().set_intensity(100)  # intensity of the light
+            self.light_2.get_transform().set_scale(nvisii.vec3(0.2))  # scale the light down
+            self.light_2.get_transform().set_position(nvisii.vec3(0, 0, 5.5)) # used to be 3, 3, 4  # sets the position of the light
 
     def _init_floor(self, image):
         """
@@ -202,28 +240,90 @@ class NVISIIRenderer(Renderer):
         Args:
             image (string): String for the file to use as an image for the walls
         """
-        texture_image = xml_path_completion("textures/" + image)
-        texture = nvisii.texture.create_from_file(name="wall_texture", path=texture_image)
-
-        for wall in self.env.model.mujoco_arena.worldbody.findall("./geom[@material='walls_mat']"):
-
-            name = wall.get("name")
-            size = [float(x) for x in wall.get("size").split(" ")]
-
-            pos, quat = self._get_orientation_geom(name)
-
-            wall_entity = nvisii.entity.create(
-                name=name,
-                mesh=nvisii.mesh.create_box(name=name, size=nvisii.vec3(size[0], size[1], size[2])),
-                transform=nvisii.transform.create(name),
-                material=nvisii.material.create(name),
+        texture = nvisii.texture.create_from_file(name="wall_texture", path="wall.jpg")
+        if self.env_type == "metaworld" or self.env_type == "mopa":
+            wall1_entity = nvisii.entity.create(
+                name="wall1",
+                mesh=nvisii.mesh.create_box(name="wall1", size=nvisii.vec3(2, 10, 10)),
+                transform=nvisii.transform.create("wall1"),
+                material=nvisii.material.create("wall1"),
             )
+            wall1_entity.get_transform().set_position(nvisii.vec3(0, 2, 0))
+            wall1_entity.get_transform().set_rotation(nvisii.quat(0, 1, 0, 0))
+            wall1_entity.get_material().set_base_color_texture(texture)
 
-            wall_entity.get_transform().set_position(nvisii.vec3(pos[0], pos[1], pos[2]))
+            wall2_entity = nvisii.entity.create(
+                name="wall2",
+                mesh=nvisii.mesh.create_box(name="wall2", size=nvisii.vec3(2, 10, 10)),
+                transform=nvisii.transform.create("wall2"),
+                material=nvisii.material.create("wall2"),
+            )
+            wall2_entity.get_transform().set_position(nvisii.vec3(0, -2, 0))
+            wall2_entity.get_transform().set_rotation(nvisii.quat(0, 1, 0, 0))
+            wall2_entity.get_material().set_base_color_texture(texture)
 
-            wall_entity.get_transform().set_rotation(nvisii.quat(quat[0], quat[1], quat[2], quat[3]))
+            wall3_entity = nvisii.entity.create(
+                name="wall3",
+                mesh=nvisii.mesh.create_box(name="wall3", size=nvisii.vec3(10, 2, 10)),
+                transform=nvisii.transform.create("wall3"),
+                material=nvisii.material.create("wall3"),
+            )
+            wall3_entity.get_transform().set_position(nvisii.vec3(3, 0, 0))
+            wall3_entity.get_transform().set_rotation(nvisii.quat(0, 1, 0, 0))
+            wall3_entity.get_material().set_base_color_texture(texture)
+        elif self.env_type == "kitchen":
+            wall1_entity = nvisii.entity.create(
+                name="wall1",
+                mesh=nvisii.mesh.create_box(name="wall1", size=nvisii.vec3(2, 10, 10)),
+                transform=nvisii.transform.create("wall1"),
+                material=nvisii.material.create("wall1"),
+            )
+            wall1_entity.get_transform().set_position(nvisii.vec3(5, 0, 0))
+            wall1_entity.get_transform().set_rotation(nvisii.quat(0, 1, 0, 0))
+            wall1_entity.get_material().set_base_color_texture(texture)
 
-            wall_entity.get_material().set_base_color_texture(texture)
+            wall2_entity = nvisii.entity.create(
+                name="wall2",
+                mesh=nvisii.mesh.create_box(name="wall2", size=nvisii.vec3(2, 10, 10)),
+                transform=nvisii.transform.create("wall2"),
+                material=nvisii.material.create("wall2"),
+            )
+            wall2_entity.get_transform().set_position(nvisii.vec3(-5, 0, 0))
+            wall2_entity.get_transform().set_rotation(nvisii.quat(0, 1, 0, 0))
+            wall2_entity.get_material().set_base_color_texture(texture)
+
+            wall3_entity = nvisii.entity.create(
+                name="wall3",
+                mesh=nvisii.mesh.create_box(name="wall3", size=nvisii.vec3(10, 2, 10)),
+                transform=nvisii.transform.create("wall3"),
+                material=nvisii.material.create("wall3"),
+            )
+            wall3_entity.get_transform().set_position(nvisii.vec3(0, 5, 0))
+            wall3_entity.get_transform().set_rotation(nvisii.quat(0, 1, 0, 0))
+            wall3_entity.get_material().set_base_color_texture(texture)
+
+        texture_image = xml_path_completion("textures/" + image)
+        # texture = nvisii.texture.create_from_file(name="wall_texture", path=texture_image)
+
+        # for wall in self.env.model.mujoco_arena.worldbody.findall("./geom[@material='walls_mat']"):
+
+        #     name = wall.get("name")
+        #     size = [float(x) for x in wall.get("size").split(" ")]
+
+        #     pos, quat = self._get_orientation_geom(name)
+
+        #     wall_entity = nvisii.entity.create(
+        #         name=name,
+        #         mesh=nvisii.mesh.create_box(name=name, size=nvisii.vec3(size[0], size[1], size[2])),
+        #         transform=nvisii.transform.create(name),
+        #         material=nvisii.material.create(name),
+        #     )
+
+        #     wall_entity.get_transform().set_position(nvisii.vec3(pos[0], pos[1], pos[2]))
+
+        #     wall_entity.get_transform().set_rotation(nvisii.quat(quat[0], quat[1], quat[2], quat[3]))
+
+        #     wall_entity.get_material().set_base_color_texture(texture)
 
     def _init_camera(self):
         """
@@ -271,15 +371,21 @@ class NVISIIRenderer(Renderer):
             # mopa
             if self.env.env_name == 'SawyerLiftObstacle-v0':
                 self.camera.get_transform().look_at(
+                    at = (0.5,0,1),
+                    up = (0,0,1),
+                    eye = (1.1,0,2.5), # used to be 1.75, 0, 2.75
+                )
+            elif self.env.env_name == "SawyerPushObstacle-v0":
+                self.camera.get_transform().look_at(
                     at = (0,0,1),
                     up = (0,0,1),
-                    eye = (1.75,0,2.75),
+                    eye = (2.0,0.0,2.0),
                 )
             else:
                 self.camera.get_transform().look_at(
                     at = (0,0,1),
                     up = (0,0,1),
-                    eye = (2.25,0,2),
+                    eye = (1.7,0,2.0),
                 )
 
         # Environment configuration
@@ -341,6 +447,31 @@ class NVISIIRenderer(Renderer):
         """
         for key, value in self.components.items():
             self._update_orientation(name=key, component=value)
+        if self.env_type == "kitchen":
+            # light switch effect 
+            if np.linalg.norm(self.env.sim.data.qpos[17:19] - [-0.69, -0.05]) < 0.3 and not self.light_set:
+                self.light_set = True 
+                self.light_s = nvisii.entity.create(
+                    name="lights",
+                    mesh=nvisii.mesh.create_sphere("lights"),
+                    transform=nvisii.transform.create("lights"),
+                )
+
+                self.light_s.set_light(nvisii.light.create("lights"))
+                self.light_s.get_light().set_falloff(4)
+                self.light_s.set_visibility(
+                    camera=False, 
+                    diffuse=False, 
+                    glossy=False, 
+                    transmission=False, 
+                    volume_scatter=False, 
+                    shadow=False
+                )
+                self.light_s.get_light().set_intensity(5)  # intensity of the light
+                self.light_s.get_light().set_color(nvisii.vec3(255/255, 248/255, 211/255))
+                self.light_s.get_transform().set_scale(nvisii.vec3(0.02))  # scale the light down
+                self.light_s.get_transform().set_position(nvisii.vec3(-0.4, 0.45,2.30))  # sets the position of the light
+            # tlb effect 
 
     def _update_orientation(self, name, component):
         """
@@ -482,7 +613,15 @@ class NVISIIRenderer(Renderer):
                 pos = self.env.sim.data.get_body_xpos(parent_body_name)
             else:
                 pos = self.env.sim.data.get_geom_xpos(name)
-
+            # use original peg position for metaworld (hardcoded)
+            if (name == "peg0" or name == "peg") \
+                and str(type(self.env)) == "<class 'metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_disassemble_peg_v2.SawyerNutDisassembleEnvV2'>":
+                if not self.set_peg:
+                    self.orig_peg_pos = self.env.sim.data.body_xpos[
+                        self.env.sim.model.body_name2id("asmbly_peg")
+                    ].copy() +  np.array([-0.03, -0.03, 0.0,])
+                    self.set_peg = True 
+                pos = self.orig_peg_pos
             B = self.env.sim.data.body_xmat[self.env.sim.model.body_name2id(parent_body_name)].reshape((3, 3))
             quat_xyzw_body = mat2quat(B)
             quat_wxyz_body = np.array(
@@ -537,7 +676,6 @@ class NVISIIRenderer(Renderer):
         Args:
             render_type (string, optional): Type of file to save as. Defaults to 'png'
         """
-
         self.img_cntr += 1
         verbose_word = "frame" if self.video_mode else "image"
 
@@ -696,6 +834,8 @@ class NVISIIRenderer(Renderer):
 
     def reset(self):
         nvisii.clear_all()
+        if self.env_type == "metaworld":
+            self.set_peg = False 
         self._init_nvisii_components()
         self.update()
 

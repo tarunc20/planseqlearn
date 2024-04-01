@@ -148,9 +148,9 @@ class RobosuitePSLEnv(PSLEnv):
                 if obj_name in self.valid_obj_names:
                     self.pick_place_bin_names[obj_name] = idx
                     idx += 1
-        self.robot = URDF.load(
-            "robosuite/robosuite/models/assets/bullet_data/panda_description/urdf/panda_arm_hand.urdf"
-        )
+        # self.robot = URDF.load(
+        #     "robosuite/robosuite/models/assets/bullet_data/panda_description/urdf/panda_arm_hand.urdf"
+        # )
         if (
             self.env_name.startswith("PickPlace")
             or self.env_name.startswith("Nut")
@@ -548,9 +548,7 @@ class RobosuitePSLEnv(PSLEnv):
                     object_pos[2] += 0.125
                     object_quat = np.zeros(4)
             elif self.env_name == "Door":
-                object_pos = self.sim.data.body_xpos[
-                    self.sim.model.body_name2id("Door_main")
-                ] + np.array([0.05, 0.18, 0.05])
+                object_pos = self.sim.data.site_xpos[self.door_handle_site_id].copy()
                 object_quat = np.array(
                     [self.sim.data.qpos[self.handle_qpos_addr]]
                 )  # this is not what they are, but they will be decoded properly

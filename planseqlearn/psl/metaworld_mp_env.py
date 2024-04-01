@@ -16,16 +16,18 @@ def set_robot_based_on_ee_pos(
     target_quat,
     qpos,
     qvel,
-    obj_name=""
+    obj_name="",
+    is_grasped=None,
 ):
     """
     Set robot joint positions based on target ee pose. Uses IK to solve for joint positions.
     If grasping an object, ensures the object moves with the arm in a consistent way.
     """
     # check is grasped
-    is_grasped = env.named_check_object_grasp(
-        env.text_plan[env.curr_plan_stage - (env.curr_plan_stage % 2)][0]
-    )()
+    if is_grasped is None:
+        is_grasped = env.named_check_object_grasp(
+            env.text_plan[env.curr_plan_stage - (env.curr_plan_stage % 2)][0]
+        )()
     # cache quantities from prior to setting the state
     object_pose = env.get_sim_object_pose(obj_name)
     gripper_qpos = env.sim.data.qpos[7:9].copy()
@@ -343,7 +345,7 @@ class MetaworldPSLEnv(PSLEnv):
             if "peg" in obj_name:
                 object_pos = self.sim.data.body_xpos[
                     self.sim.model.body_name2id("peg")
-                ] + np.array([0.13, 0.0, 0.15])
+                ] + np.array([0.13, 0.0, 0.18]) # used to be 0.15
                 object_quat = np.zeros(4)
         elif self.env_name == "disassemble-v2":
             if "wrench" in obj_name:
@@ -548,6 +550,7 @@ class MetaworldPSLEnv(PSLEnv):
         qpos,
         qvel,
         obj_name="",  # placeholder argument for robosuite
+        is_grasped=None,
     ):
         if target_pos is not None:
             set_robot_based_on_ee_pos(
@@ -556,7 +559,8 @@ class MetaworldPSLEnv(PSLEnv):
                 target_quat,
                 qpos,
                 qvel,
-                obj_name=obj_name
+                obj_name=obj_name,
+                is_grasped=is_grasped
             )
         else:
             return -np.inf
@@ -597,7 +601,7 @@ class MetaworldPSLEnv(PSLEnv):
         desired_rot = quat2mat(state[3:])
         prev_state = None
         # state[:3] = start[:3] + (state[:3] - start[:3]) * ((step+1) / num_steps)
-        for s in tqdm(range(25)):
+        for s in tqdm(range(20)):
             err = np.linalg.norm(state[:3] - self._eef_xpos)
             if prev_state is not None and err < 1e-4:
                 self.break_mp = True
