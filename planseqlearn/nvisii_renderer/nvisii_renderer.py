@@ -142,7 +142,8 @@ class NVISIIRenderer(Renderer):
             nvisii.sample_pixel_area(x_sample_interval=(0.0, 1.0), y_sample_interval=(0.0, 1.0))
         else:
             nvisii.sample_pixel_area(x_sample_interval=(0.5, 0.5), y_sample_interval=(0.5, 0.5))
-
+        # keep track of initial component colors 
+        self._init_component_colors = {}
         self._init_nvisii_components()
 
     def _init_nvisii_components(self):
@@ -356,9 +357,9 @@ class NVISIIRenderer(Renderer):
         elif self.env_type == 'metaworld':
             # metaworld
             self.camera.get_transform().look_at(
-                at = (0,0,-.25),
+                at = (0,0,0.1),
                 up = (0,0,1),
-                eye = (0,1.5,1),
+                eye = (1,1,0.5),
             )
         elif self.env_type == 'menagerie':
             self._camera_configuration(
@@ -437,8 +438,19 @@ class NVISIIRenderer(Renderer):
         self.parser.parse_geometries()
         self.components = self.parser.components
         self.max_elements = self.parser.max_elements
+        # set initial colors in components
+        for comp in self.components:
+            try:
+                self._init_component_colors[comp] = \
+                self.components[comp].obj.get_material().get_base_color()
+            except:
+                try:
+                    self._init_component_colors[comp] = \
+                    self.components[comp].obj.materials[0].get_base_color()
+                except:
+                    pass
 
-    def update(self):
+    def update(self, is_mp=False):
         """
         Updates the states for the wrapper given a certain action
 
@@ -446,7 +458,7 @@ class NVISIIRenderer(Renderer):
             action (np-array): The action the robot should take
         """
         for key, value in self.components.items():
-            self._update_orientation(name=key, component=value)
+            self._update_orientation(name=key, component=value, is_mp=is_mp)
         if self.env_type == "kitchen":
             # light switch effect 
             if np.linalg.norm(self.env.sim.data.qpos[17:19] - [-0.69, -0.05]) < 0.3 and not self.light_set:
@@ -471,9 +483,8 @@ class NVISIIRenderer(Renderer):
                 self.light_s.get_light().set_color(nvisii.vec3(255/255, 248/255, 211/255))
                 self.light_s.get_transform().set_scale(nvisii.vec3(0.02))  # scale the light down
                 self.light_s.get_transform().set_position(nvisii.vec3(-0.4, 0.45,2.30))  # sets the position of the light
-            # tlb effect 
 
-    def _update_orientation(self, name, component):
+    def _update_orientation(self, name, component, is_mp=False):
         """
         Update position for an object or a robot in renderer.
 
@@ -482,7 +493,6 @@ class NVISIIRenderer(Renderer):
             component (nvisii entity or scene): Object in renderer and other info
                                                 for object.
         """
-
         obj = component.obj
         parent_body_name = component.parent_body_name
         geom_pos = component.geom_pos
@@ -656,6 +666,100 @@ class NVISIIRenderer(Renderer):
         else:
             obj.get_transform().set_position(nvisii.vec3(pos[0], pos[1], pos[2]))
             obj.get_transform().set_rotation(nvisii_quat)
+
+        # set color based on mp 
+        print(f"Name: {name}")
+        is_robot_body = False
+        if self.env_type == "metaworld":
+            is_robot_body = name in [
+                "robot_right_l0",
+                "base_link",
+                "pedestal",
+                "pedestal0",
+                "robot_right_l1",
+                "robot_right_l2",
+                "robot_right_l3",
+                "robot_right_l4",
+                "robot_right_l5",
+                "robot_right_l6",
+                "torso0",
+                "right_arm_base_link0",
+                "rightpad_geom",
+                "leftpad_geom",
+                "head0",
+                "controller_box0",
+                "right_hand0", 
+                "right_hand1"
+            ]
+        if self.env_type == "kitchen":
+            is_robot_body = name in [
+                "panda0_link00",
+                "panda0_link10",
+                "panda0_link20",
+                "panda0_link30",
+                "panda0_link40",
+                "panda0_link50",
+                "panda0_link60",
+                "panda0_link70",
+                "panda0_link72",
+                "panda0_leftfinger0",
+                "panda0_leftfinger1",
+                "panda0_leftfinger2",
+                "panda0_leftfinger3",
+                "panda0_leftfinger4",
+                "panda0_leftfinger5",
+                "panda0_leftfinger6",
+                "panda0_leftfinger7",
+                "panda0_leftfinger8",
+                "panda0_leftfinger9",
+                "panda0_leftfinger10",
+                "panda0_leftfinger11",
+                "panda0_leftfinger12",
+                "panda0_leftfinger13",
+                "panda0_rightfinger0",
+                "panda0_rightfinger1",
+                "panda0_rightfinger2",
+                "panda0_rightfinger3",
+                "panda0_rightfinger4",
+                "panda0_rightfinger5",
+                "panda0_rightfinger6",
+                "panda0_rightfinger7",
+                "panda0_rightfinger8",
+                "panda0_rightfinger9",
+                "panda0_rightfinger10",
+                "panda0_rightfinger11",
+                "panda0_rightfinger12",
+                "panda0_rightfinger13",
+            ]
+        if self.env_type == "mopa":
+            is_robot_body = name in [
+                "controller_box0",
+                "pedestal_feet0",
+                "torso0",
+                "right_arm_base_link0",
+                "right_l0_g0",
+                "head_g0",
+                "right_l10",
+                "right_l20",
+                "right_l30",
+                "right_l40",
+                "right_l50",
+                "right_l60",
+                "clawGripper0",
+                "clawGripper1",
+                "rightclaw_it",
+                "leftclaw_it0",
+            ]
+        if is_mp and is_robot_body:
+            if "scene" in str(type(obj)):
+                obj.materials[0].set_base_color(nvisii.vec3(0., 0., 1.))
+            else:
+                obj.get_material().set_base_color(nvisii.vec3(0., 0., 1.))
+        else:
+            if "scene" in str(type(obj)):
+                obj.materials[0].set_base_color(self._init_component_colors[name])
+            else:
+                obj.get_material().set_base_color(self._init_component_colors[name])
 
     def tag_in_name(self, name):
         """

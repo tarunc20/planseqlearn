@@ -1,12 +1,13 @@
 from copy import copy
 import os
 import random
-import sys
-sys.path.remove("/home/tarunc/Desktop/research/d4rl")
+# import sys
+# sys.path.remove("/home/tarunc/Desktop/research/d4rl")
 import time
 import gym
 import mujoco_py
 import argparse
+from PIL import ImageFont, ImageDraw, Image
 
 from tqdm import tqdm
 from planseqlearn.environments.robosuite_dm_env import make_robosuite
@@ -129,7 +130,7 @@ ENV_NAME_MAP = {
 }
     
 
-def gen_video(env_name, camera_name, suite):
+def gen_video(env_name, camera_name, suite, clean):
     np.random.seed(0)
     random.seed(0)
     if suite == 'metaworld':
@@ -239,6 +240,10 @@ def gen_video(env_name, camera_name, suite):
         env.env_name = env_name
     frame_env_name = ENV_NAME_MAP[suite][env_name]
     env.reset()
+    font_path = 'planseqlearn/RobotoSlab-Regular.ttf'
+    font = ImageFont.truetype(font_path, 45)
+    font_path = 'planseqlearn/RobotoSlab-Bold.ttf'
+    font2 = ImageFont.truetype(font_path, 60)
     cfg = {
         "img_path": "images/",
         "width": 1920, #1980, # used to be 1980 by 1080
@@ -261,16 +266,40 @@ def gen_video(env_name, camera_name, suite):
     # clear images folder
     for file in os.listdir("images"):
         os.remove(os.path.join("images", file))
+    # load mp idxs
+    mp_idxs = list(np.load(f"mp_idxs/{env_name}_{camera_name}_mp_idxs.npz")['mp_idxs'])
     for step in tqdm(range(states["qpos"].shape[0])):
         qpos = states["qpos"][step]
         qvel = states["qvel"][step]
         env.sim.data.qpos[:] = qpos
         env.sim.data.qvel[:] = qvel
         env.sim.forward()
-        renderer.update()
+        renderer.update(is_mp=(step in mp_idxs) and not clean)
         renderer.render()
-    # load mp idxs
-    mp_idxs = list(np.load(f"mp_idxs/{env_name}_{camera_name}_mp_idxs.npz")['mp_idxs'])
+        if not clean:
+            imfile = sorted(os.listdir("images"))[-1]
+            frame = cv2.imread(f"images/{imfile}")
+            img_pil = Image.fromarray(frame)
+            x = 0.1 * cfg['width']
+            y = 0.05 * cfg['height']
+            draw = ImageDraw.Draw(img_pil)
+            draw.text((x, y), frame_env_name, font=font2, fill = (0, 0, 0, 1))
+            if step in mp_idxs:
+                draw.ellipse(
+                    (0.065 * cfg['width'], 0.14 * cfg['height'] - 5, 0.08 * cfg['width'], 0.17 * cfg['height'] - 5),
+                    fill = (0, 0, 255, 1),
+                )
+                draw.text((0.1 * cfg["width"], 0.12 * cfg["height"]), "Motion Planner", font=font, fill = (0, 0, 0, 1))
+                draw.text((0.1 * cfg["width"], 0.17 * cfg["height"]), "Local Policy", font=font, fill = (128, 128, 128, 1))
+            else:
+                draw.ellipse(
+                    (0.065 * cfg['width'], 0.19 * cfg['height'] - 5, 0.08 * cfg['width'], 0.22 * cfg['height'] - 5),
+                    fill = (0, 0, 255, 1),
+                )
+                draw.text((0.1 * cfg["width"], 0.12 * cfg["height"]), "Motion Planner", font=font, fill = (128, 128, 128, 1))
+                draw.text((0.1 * cfg["width"], 0.17 * cfg["height"]), "Local Policy", font=font, fill = (0, 0, 0, 1))
+            frame = np.array(img_pil)
+            cv2.imwrite(f"images/{imfile}", frame)
     # load png files from images folder
     frames = []
     for idx in range(1, len(os.listdir("images"))):
@@ -289,4 +318,4 @@ if __name__ == "__main__":
     parser.add_argument("--suite", type=str, help="Name of the suite")
     parser.add_argument("--clean", action="store_true", help="Generate clean video")
     args = parser.parse_args()
-    gen_video(args.env_name, args.camera_name, args.suite)
+    gen_video(args.env_name, args.camera_name, args.suite, args.clean)
