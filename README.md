@@ -67,7 +67,10 @@ Two quick notes:
 2. The singularity container only contains dependencies! Within this container you still need to perform all the necessary python installations, copying of OMPL paths, etc.
 
 # Model Training
-
+To train the policies from a particular environment suite, run the following command:
+```
+python planseqlearn/matrix_scripts/psl_[suite].py
+```
 # Model Inference 
 
 
