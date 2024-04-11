@@ -1,14 +1,12 @@
 from copy import copy
 import os
 import random
-# import sys
-# sys.path.remove("/home/tarunc/Desktop/research/d4rl")
 import time
 import gym
 import mujoco_py
 import argparse
 from PIL import ImageFont, ImageDraw, Image
-
+import matplotlib.pyplot as plt 
 from tqdm import tqdm
 from planseqlearn.environments.robosuite_dm_env import make_robosuite
 from planseqlearn.environments.metaworld_dm_env import make_metaworld
@@ -245,9 +243,9 @@ def gen_video(env_name, camera_name, suite, clean):
     font_path = 'planseqlearn/RobotoSlab-Bold.ttf'
     font2 = ImageFont.truetype(font_path, 60)
     cfg = {
-        "img_path": "images/",
-        "width": 1920, #1980, # used to be 1980 by 1080
-        "height": 1080,
+        "img_path": f"images_{env_name}/",
+        "width": 256, #1980, # used to be 1980 by 1080
+        "height": 128,
         "spp": 512,
         "use_noise": False,
         "debug_mode": False,
@@ -258,57 +256,82 @@ def gen_video(env_name, camera_name, suite, clean):
         "verbose": 1,
         "vision_modalities": None
     }
-    renderer = NVISIIRenderer(env,
-                              **cfg)
-    states = np.load(f"states/{env_name}_{camera_name}_states.npz")
-    print(renderer.components.keys())
-    renderer.reset()
-    # clear images folder
-    for file in os.listdir("images"):
-        os.remove(os.path.join("images", file))
-    # load mp idxs
-    mp_idxs = list(np.load(f"mp_idxs/{env_name}_{camera_name}_mp_idxs.npz")['mp_idxs'])
-    for step in tqdm(range(states["qpos"].shape[0])):
-        qpos = states["qpos"][step]
-        qvel = states["qvel"][step]
-        env.sim.data.qpos[:] = qpos
-        env.sim.data.qvel[:] = qvel
-        env.sim.forward()
-        renderer.update(is_mp=(step in mp_idxs) and not clean)
-        renderer.render()
-        if not clean:
-            imfile = sorted(os.listdir("images"))[-1]
-            frame = cv2.imread(f"images/{imfile}")
-            img_pil = Image.fromarray(frame)
-            x = 0.1 * cfg['width']
-            y = 0.05 * cfg['height']
-            draw = ImageDraw.Draw(img_pil)
-            draw.text((x, y), frame_env_name, font=font2, fill = (0, 0, 0, 1))
-            if step in mp_idxs:
-                draw.ellipse(
-                    (0.065 * cfg['width'], 0.14 * cfg['height'] - 5, 0.08 * cfg['width'], 0.17 * cfg['height'] - 5),
-                    fill = (0, 0, 255, 1),
-                )
-                draw.text((0.1 * cfg["width"], 0.12 * cfg["height"]), "Motion Planner", font=font, fill = (0, 0, 0, 1))
-                draw.text((0.1 * cfg["width"], 0.17 * cfg["height"]), "Local Policy", font=font, fill = (128, 128, 128, 1))
-            else:
-                draw.ellipse(
-                    (0.065 * cfg['width'], 0.19 * cfg['height'] - 5, 0.08 * cfg['width'], 0.22 * cfg['height'] - 5),
-                    fill = (0, 0, 255, 1),
-                )
-                draw.text((0.1 * cfg["width"], 0.12 * cfg["height"]), "Motion Planner", font=font, fill = (128, 128, 128, 1))
-                draw.text((0.1 * cfg["width"], 0.17 * cfg["height"]), "Local Policy", font=font, fill = (0, 0, 0, 1))
-            frame = np.array(img_pil)
-            cv2.imwrite(f"images/{imfile}", frame)
-    # load png files from images folder
-    frames = []
-    for idx in range(1, len(os.listdir("images"))):
-        im_path = os.path.join("images", "image_{}.png".format(idx))
-        frames.append(cv2.imread(im_path))
-        if (idx - 1) not in mp_idxs:
+    renderer = NVISIIRenderer(env, **cfg)
+    for traj in range(3):
+        for file in os.listdir(f"images_{env_name}"):
+            os.remove(os.path.join(f"images_{env_name}", file))
+        states = np.load(f"states/{env_name}_{camera_name}_states_{traj}.npz") # add traj
+        print(renderer.components.keys())
+        renderer.reset()
+        # clear images folder
+        # load mp idxs 
+        mp_idxs = list(np.load(f"mp_idxs/{env_name}_{camera_name}_mp_idxs_{traj}.npz")['mp_idxs']) # add traj
+        waypoint_masks = []
+        prev_idx = -1
+        blended = []
+        for step in tqdm(range(states["qpos"].shape[0])):
+            qpos = states["qpos"][step]
+            qvel = states["qvel"][step]
+            env.sim.data.qpos[:] = qpos
+            env.sim.data.qvel[:] = qvel
+            env.sim.forward()
+            renderer.update(is_mp=(step + 1 in mp_idxs) and not clean)
+            # this is the code for segmentation 
+            # if step in mp_idxs and step + 1 not in mp_idxs:
+            #     waypoint_mask = renderer.get_robot_segmentation(img_file="a")
+            #     # load latest image 
+            #     imfile = sorted(os.listdir("images"))[-1]
+            #     last_im = np.array(Image.open("images/" + imfile))
+            #     waypoint_im = last_im.copy()
+            #     waypoint_mask = waypoint_mask[:, :, None]
+            #     waypoint_im *= waypoint_mask 
+            #     # do alpha blending for all previous images 
+            #     for idx in mp_idxs:
+            #         if idx not in blended and idx < step:
+            #             new_im = np.array(Image.open(f"images/image_{idx + 1}.png"))
+            #             new_im = (
+            #                 0.5 * (new_im * waypoint_mask) + 
+            #                 0.5 * waypoint_im +
+            #                 new_im * [1 - waypoint_mask] 
+            #             )[0]
+            #             blended.append(idx)
+            #             new_im = Image.fromarray(new_im, mode="RGBA")
+            #             new_im.save(f"images/image_{idx + 1}.png")
+            #     prev_idx = step
+            renderer.render()
+            if not clean:
+                imfile = f"image_{renderer.img_cntr}.png"
+                frame = cv2.imread(f"images_{env_name}/{imfile}")
+                img_pil = Image.fromarray(frame)
+                x = 0.1 * cfg['width']
+                y = 0.05 * cfg['height']
+                draw = ImageDraw.Draw(img_pil)
+                draw.text((x, y), frame_env_name, font=font2, fill = (0, 0, 0, 1))
+                if step in mp_idxs:
+                    draw.ellipse(
+                        (0.065 * cfg['width'], 0.14 * cfg['height'] - 5, 0.08 * cfg['width'], 0.17 * cfg['height'] - 5),
+                        fill = (0, 0, 255, 1),
+                    )
+                    draw.text((0.1 * cfg["width"], 0.12 * cfg["height"]), "Motion Planner", font=font, fill = (0, 0, 0, 1))
+                    draw.text((0.1 * cfg["width"], 0.17 * cfg["height"]), "Local Policy", font=font, fill = (128, 128, 128, 1))
+                else:
+                    draw.ellipse(
+                        (0.065 * cfg['width'], 0.19 * cfg['height'] - 5, 0.08 * cfg['width'], 0.22 * cfg['height'] - 5),
+                        fill = (0, 0, 255, 1),
+                    )
+                    draw.text((0.1 * cfg["width"], 0.12 * cfg["height"]), "Motion Planner", font=font, fill = (128, 128, 128, 1))
+                    draw.text((0.1 * cfg["width"], 0.17 * cfg["height"]), "Local Policy", font=font, fill = (0, 0, 0, 1))
+                frame = np.array(img_pil)
+                cv2.imwrite(f"images_{env_name}/{imfile}", frame)
+        # load png files from images folder
+        frames = []
+        for idx in range(1, len(os.listdir(f"images_{env_name}"))):
+            im_path = os.path.join(f"images_{env_nmae}", "image_{}.png".format(idx))
             frames.append(cv2.imread(im_path))
-    video_filename = f"{env_name}_{camera_name}.mp4"
-    make_video(frames, "rendered_videos", video_filename)
+            if (idx - 1) not in mp_idxs:
+                frames.append(cv2.imread(im_path))
+        video_filename = f"{env_name}_{camera_name}_{traj}.mp4"
+        make_video(frames, "rendered_videos", video_filename)
 
 
 if __name__ == "__main__":

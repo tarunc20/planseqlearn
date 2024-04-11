@@ -449,7 +449,7 @@ class NVISIIRenderer(Renderer):
                     self.components[comp].obj.materials[0].get_base_color()
                 except:
                     pass
-
+                    
     def update(self, is_mp=False):
         """
         Updates the states for the wrapper given a certain action
@@ -458,7 +458,8 @@ class NVISIIRenderer(Renderer):
             action (np-array): The action the robot should take
         """
         for key, value in self.components.items():
-            self._update_orientation(name=key, component=value, is_mp=is_mp)
+            if "target" not in key:
+                self._update_orientation(name=key, component=value, is_mp=is_mp)
         if self.env_type == "kitchen":
             # light switch effect 
             if np.linalg.norm(self.env.sim.data.qpos[17:19] - [-0.69, -0.05]) < 0.3 and not self.light_set:
@@ -808,13 +809,83 @@ class NVISIIRenderer(Renderer):
         segmentation_array[segmentation_array < 3.4028234663852886e-37] = 0
         segmentation_array = np.flipud(segmentation_array)
 
-        rgb_data = self.segmentation_to_rgb(segmentation_array.astype(dtype=np.uint8))
+        rgb_data = segmentation_array.astype(dtype=np.uint8) #self.segmentation_to_rgb(segmentation_array.astype(dtype=np.uint8))
 
         from PIL import Image
 
         rgb_img = Image.fromarray(rgb_data)
         rgb_img.save(img_file)
 
+    def get_robot_segmentation(self, img_file=None):
+        # return array of image size with appropriate entity ids 
+        segmentation_array = nvisii.render_data(
+            width=int(self.width),
+            height=int(self.height),
+            start_frame=0,
+            frame_count=1,
+            bounce=int(0),
+            options="entity_id",
+            seed=1,
+        )
+        segmentation_array = np.flipud(
+            np.array(segmentation_array).reshape(self.height, self.width, 4)[:, :, 0].astype(np.uint8)
+        )
+        robot_bodies = []
+        if self.env_type == "mopa":
+            robot_bodies = [
+                "controller_box0",
+                "pedestal_feet0",
+                "torso0",
+                "pedestal0",
+                "pedestal1",
+                "right_arm_base_link0",
+                "right_l0_g0",
+                "head_g0",
+                "screen0",
+                "right_l10",
+                "right_l20",
+                "right_l30",
+                "right_l40",
+                "right_l50",
+                "right_l60",
+                "clawGripper0",
+                "clawGripper1",
+                "rightclaw_it",
+                "leftclaw_it0",
+            ] 
+        if self.env_type == "metaworld":
+            pass 
+        if self.env_type == "kitchen":
+            robot_bodies = [k for k in self.components if k.startswith("panda")] 
+        all_entity_ids = set()
+        for comp_name, component in self.components.items():
+            if comp_name in robot_bodies:
+                # if isinstance(component, nvisii.scene):
+                #     for i in range(len(component.entities)):
+                #         all_entity_ids.add(component.entities[i].get_id())
+                # else:
+                all_entity_ids.add(component.element_id)
+
+        for i in range(len(segmentation_array)):
+            for j in range(len(segmentation_array[0])):
+                if segmentation_array[i][j] in self.parser.entity_id_class_mapping:
+                    segmentation_array[i][j] = self.parser.entity_id_class_mapping[segmentation_array[i][j]]
+                else:
+                    segmentation_array[i][j] = 254
+        for id in list(np.unique(segmentation_array)):
+            if id not in all_entity_ids:
+                segmentation_array[segmentation_array == id] = 0 
+            else:
+                segmentation_array[segmentation_array == id] = 1
+        if img_file is not None:
+            import matplotlib.pyplot as plt 
+            plt.imshow(segmentation_array)
+            plt.savefig("seg3.png")
+        # from PIL import Image
+
+        # rgb_img = Image.fromarray(255 - segmentation_array)
+        # rgb_img.save(img_file)
+        return segmentation_array
     def render_data_to_file(self, img_file):
 
         if self.vision_modalities == "depth" and self.img_cntr != 1:
@@ -912,32 +983,40 @@ class NVISIIRenderer(Renderer):
 
             cmap = cm.get_cmap("jet")
 
-            max_r = 0
-            if self.segmentation_type[0][0] == "element":
-                max_r = np.amax(seg_im) + 1
-            elif self.segmentation_type[0][0] == "class":
-                max_r = self.max_classes
-                for i in range(len(seg_im)):
-                    for j in range(len(seg_im[0])):
-                        if seg_im[i][j] in self.parser.entity_id_class_mapping:
-                            seg_im[i][j] = self.parser.entity_id_class_mapping[seg_im[i][j]]
-                        else:
-                            seg_im[i][j] = max_r - 1
-            elif self.segmentation_type[0][0] == "instance":
-                max_r = self.max_instances
-                for i in range(len(seg_im)):
-                    for j in range(len(seg_im[0])):
-                        if seg_im[i][j] in self.parser.entity_id_class_mapping:
-                            seg_im[i][j] = self.parser.entity_id_class_mapping[seg_im[i][j]]
-                        else:
-                            seg_im[i][j] = max_r - 1
+            for i in range(len(seg_im)):
+                for j in range(len(seg_im[0])):
+                    if seg_im[i][j] in self.parser.entity_id_class_mapping:
+                        seg_im[i][j] = self.parser.entity_id_class_mapping[seg_im[i][j]]
+                    else:
+                        seg_im[i][j] = 254
 
+            # max_r = 0
+            # if self.segmentation_type[0][0] == "element":
+            #     max_r = np.amax(seg_im) + 1
+            # elif self.segmentation_type[0][0] == "class":
+            #     max_r = self.max_classes
+            #     for i in range(len(seg_im)):
+            #         for j in range(len(seg_im[0])):
+            #             if seg_im[i][j] in self.parser.entity_id_class_mapping:
+            #                 seg_im[i][j] = self.parser.entity_id_class_mapping[seg_im[i][j]]
+            #             else:
+            #                 seg_im[i][j] = max_r - 1
+            # elif self.segmentation_type[0][0] == "instance":
+            #     max_r = self.max_instances
+            #     for i in range(len(seg_im)):
+            #         for j in range(len(seg_im[0])):
+            #             if seg_im[i][j] in self.parser.entity_id_class_mapping:
+            #                 seg_im[i][j] = self.parser.entity_id_class_mapping[seg_im[i][j]]
+            #             else:
+            #                 seg_im[i][j] = max_r - 1
+            max_r = 255
             color_list = np.array([cmap(i / (max_r)) for i in range(max_r)])
 
             return (color_list[seg_im] * 255).astype(np.uint8)
 
     def reset(self):
         nvisii.clear_all()
+        self.img_cntr = 0
         if self.env_type == "metaworld":
             self.set_peg = False 
         self._init_nvisii_components()

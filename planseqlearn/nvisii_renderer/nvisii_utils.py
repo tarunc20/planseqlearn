@@ -53,7 +53,7 @@ def load_object(
         assert False
     if env_type == "mopa" and geom_name in ["bin10", "bin12", "bin14", "bin16", "bin18"]:
         assert False 
-    print(f"Geom name:{geom_name}")
+    print(f"Geom name: {geom_name, geom_type}")
     primitive_types = ["box", "cylinder"]
     component = None
 
@@ -188,4 +188,5 @@ def load_object(
             if isinstance(component, nvisii.scene):
                 for entity in component.entities:
                     entity.get_material().set_base_color_texture(texture)
+
     return component, entity_ids
