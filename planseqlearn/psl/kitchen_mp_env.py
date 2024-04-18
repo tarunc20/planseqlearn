@@ -331,7 +331,7 @@ class KitchenPSLEnv(PSLEnv):
     
     def get_mp_target_pose(self, obj_name):
         if "slide" in obj_name:
-            object_pos = self.get_site_xpos("schandle1")
+            object_pos = self.get_site_xpos("schandle1") + np.array([-0., -0.04, 0.])
             if self.teleport_instead_of_mp:
                 object_quat = np.zeros(4)  # doesn't really matter
             else:
@@ -385,7 +385,7 @@ class KitchenPSLEnv(PSLEnv):
                 else:
                     object_quat = np.array([0.4369543 , -0.54296637, -0.50993353, -0.50420886])
         elif "kettle" in obj_name:
-            object_pos = self.get_site_xpos("khandle1")
+            object_pos = self.get_site_xpos("khandle1") + np.array([0., -0.02, 0])
             if self.teleport_instead_of_mp:
                 object_quat = np.zeros(4)  # doesn't really matter
             else:
@@ -428,7 +428,7 @@ class KitchenPSLEnv(PSLEnv):
         self.sim.data.qpos[:7] = qpos[:7]
         self.sim.data.qvel[:7] = qvel[:7]
         self.sim.forward()
-        qpos_from_site_pose_kitchen(
+        result = qpos_from_site_pose_kitchen(
             self,
             "end_effector",
             target_pos=target_pos,
@@ -503,7 +503,7 @@ class KitchenPSLEnv(PSLEnv):
         self.sim.data.qpos[:7] = joint_pos
         self.sim.forward()
         assert (self.sim.data.qpos[:7] - joint_pos).sum() < 1e-10, f"{(self.sim.data.qpos[:7] - joint_pos).sum()}"
-
+        is_grasped = False 
         if is_grasped:
             self.sim.data.qpos[7:9] = gripper_qpos
             self.sim.data.qvel[7:9] = gripper_qvel
@@ -666,7 +666,7 @@ class KitchenPSLEnv(PSLEnv):
         *args,
         **kwargs,
     ):
-        curr = self.sim.data.qpos[:7]
+        curr = self.sim.data.qpos[:7].copy()
         new_state = curr + (state - curr) / 5
         self.set_robot_based_on_joint_angles(
             new_state,
