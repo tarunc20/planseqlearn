@@ -48,3 +48,8 @@ nvisii
 gymnasium
 colorlog
 gym==0.21.0
+dm-control==1.0.5
+dm-env==1.6
+dm-tree==0.1.8
+mujoco==2.3.5
+mujoco-py==2.0.2.13
