@@ -385,7 +385,7 @@ class KitchenPSLEnv(PSLEnv):
                 else:
                     object_quat = np.array([0.4369543 , -0.54296637, -0.50993353, -0.50420886])
         elif "kettle" in obj_name:
-            object_pos = self.get_site_xpos("khandle1") + np.array([0., -0.02, 0])
+            object_pos = self.get_site_xpos("khandle1") + np.array([0., -0.00, 0])
             if self.teleport_instead_of_mp:
                 object_quat = np.zeros(4)  # doesn't really matter
             else:
